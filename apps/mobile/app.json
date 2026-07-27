@@ -42,10 +42,11 @@
     },
     "extra": {
       "apiUrl": "http://localhost:8080",
+      "router": {},
       "eas": {
-        "projectId": "REPLACE_AFTER_EAS_INIT"
+        "projectId": "5e17a2e3-7149-4fe1-8db1-a616ec54c241"
       }
     },
-    "owner": "REPLACE_WITH_EXPO_USERNAME"
+    "owner": "edouard2"
   }
 }
