@@ -1,0 +1,16 @@
+---
+description: Always use feature branches and pull requests; never commit or push to main
+alwaysApply: true
+---
+
+# Git workflow (portclos)
+
+- **Never** commit or push directly to `main`.
+- **Never** merge to `main` from the agent (no local merge onto main, no push to main).
+- For every change:
+  1. Create a feature/chore/fix branch from up-to-date `main`
+  2. Commit on that branch
+  3. Push the branch with `-u`
+  4. Open a PR with `gh pr create`
+  5. Return the PR URL — the user merges
+- Do not use `--no-verify` or force-push to `main`/`master`.
