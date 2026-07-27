@@ -73,19 +73,28 @@ Never put hostnames, paths, or passwords in the repository.
 
 Workflow: [`.github/workflows/mobile.yml`](.github/workflows/mobile.yml) on changes under `apps/mobile/` (or manual dispatch).
 
+Push to `main` runs **build only**. Auto-submit is opt-in via **Actions → Mobile → Run workflow → submit = true**, and only after Play credentials exist on EAS.
+
 ### One-time Expo / store setup
 
-1. `cd apps/mobile && npx eas-cli@latest login && npx eas-cli@latest init`  
-   Replace `owner` and `extra.eas.projectId` in `app.json` with the values EAS writes.
+1. `cd apps/mobile && npx eas-cli@latest login && npx eas-cli@latest init`
 2. Create the app in App Store Connect and Google Play Console (`com.portclos.app`).
-3. Configure credentials once (stored by Expo, not in git):
+3. Configure signing credentials (stored by Expo, not in git):
 
    ```bash
    cd apps/mobile
    npx eas-cli@latest credentials
    ```
 
-4. Link Play service account for **internal** testing; ensure ASC app exists for TestFlight.
+4. **Android submit (required for `--auto-submit`)** — link a Google Play **service account** JSON via EAS (interactive; cannot be done by CI alone):
+
+   ```bash
+   npx eas-cli@latest credentials -p android
+   ```
+
+   In Play Console: create a service account with access to the app, download the JSON, then choose it in the EAS credentials flow for **Google Service Account Keys**.
+
+5. Optional: set GitHub secret `EXPO_ASC_APP_ID` (numeric App Store Connect app id) for iOS submit.
 
 ### GitHub secrets (mobile)
 

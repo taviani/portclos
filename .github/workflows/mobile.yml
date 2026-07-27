@@ -7,13 +7,18 @@ on:
       - "apps/mobile/**"
       - ".github/workflows/mobile.yml"
   workflow_dispatch:
+    inputs:
+      submit:
+        description: "Auto-submit to TestFlight / Play after build (needs Play service account on EAS)"
+        type: boolean
+        default: false
 
 concurrency:
   group: mobile-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  eas-build-submit:
+  eas-build:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -76,14 +81,18 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: EAS build and submit (iOS TestFlight + Android internal)
+      - name: EAS build (optional auto-submit)
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          WANT_SUBMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.submit || false }}
         run: |
-          eas build \
-            --platform all \
-            --profile preview \
-            --non-interactive \
-            --auto-submit \
-            --no-wait
+          set -euo pipefail
+          args=(build --platform all --profile preview --non-interactive --no-wait)
+          if [ "${WANT_SUBMIT}" = "true" ]; then
+            echo "Auto-submit enabled (manual dispatch)."
+            args+=(--auto-submit)
+          else
+            echo "Build only — configure Play Google Service Account on EAS before enabling submit."
+          fi
+          eas "${args[@]}"
