@@ -48,7 +48,7 @@ jobs:
       - name: Start stack
         run: |
           cp .env.example .env
-          docker-compose up -d --build --wait
+          docker compose up -d --build --wait
 
       - name: Smoke test /health
         run: |
@@ -59,12 +59,12 @@ jobs:
             sleep 2
           done
           echo "::error::health check failed"
-          docker-compose logs
+          docker compose logs
           exit 1
 
       - name: Tear down
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
 
   deploy:
     runs-on: ubuntu-latest
