@@ -41,7 +41,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiUrl": "http://localhost:8080"
-    }
+      "apiUrl": "http://localhost:8080",
+      "eas": {
+        "projectId": "REPLACE_AFTER_EAS_INIT"
+      }
+    },
+    "owner": "REPLACE_WITH_EXPO_USERNAME"
   }
 }

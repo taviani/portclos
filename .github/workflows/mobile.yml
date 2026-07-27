@@ -1,0 +1,89 @@
+name: Mobile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/mobile.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  eas-build-submit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate mobile secrets
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+        run: |
+          missing=0
+          for name in EXPO_TOKEN EXPO_PUBLIC_API_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is not configured"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Inject build env into eas.json
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_ASC_APP_ID: ${{ secrets.EXPO_ASC_APP_ID }}
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const eas = JSON.parse(fs.readFileSync("eas.json", "utf8"));
+          const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+          for (const name of Object.keys(eas.build || {})) {
+            eas.build[name].env = {
+              ...(eas.build[name].env || {}),
+              EXPO_PUBLIC_API_URL: apiUrl,
+            };
+          }
+          const ascAppId = process.env.EXPO_ASC_APP_ID;
+          if (ascAppId) {
+            for (const name of Object.keys(eas.submit || {})) {
+              eas.submit[name].ios = {
+                ...(eas.submit[name].ios || {}),
+                ascAppId,
+              };
+            }
+          }
+          fs.writeFileSync("eas.json", JSON.stringify(eas, null, 2) + "\n");
+          NODE
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: EAS build and submit (iOS TestFlight + Android internal)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+        run: |
+          eas build \
+            --platform all \
+            --profile preview \
+            --non-interactive \
+            --auto-submit \
+            --no-wait

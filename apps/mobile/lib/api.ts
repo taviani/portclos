@@ -5,6 +5,10 @@ type Extra = {
 };
 
 function apiBaseUrl(): string {
+  const fromEnv = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (fromEnv) {
+    return fromEnv.replace(/\/$/, '');
+  }
   const extra = Constants.expoConfig?.extra as Extra | undefined;
   return (extra?.apiUrl ?? 'http://localhost:8080').replace(/\/$/, '');
 }
