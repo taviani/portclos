@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       submit:
-        description: "Auto-submit to TestFlight / Play after build (needs Play service account on EAS)"
+        description: "After build, auto-submit iOS to TestFlight (Play submit needs a Google service account on EAS — skipped until then)"
         type: boolean
         default: false
 
@@ -94,18 +94,27 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: EAS build (optional auto-submit)
+      - name: EAS build (optional iOS auto-submit)
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_ASC_APP_ID: ${{ secrets.EXPO_ASC_APP_ID }}
           WANT_SUBMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.submit || false }}
         run: |
           set -euo pipefail
-          args=(build --platform all --profile preview --non-interactive --no-wait)
+          # Build platforms separately so a missing Play GSA cannot block iOS TestFlight submit.
+          echo "Building Android (no auto-submit until Play service account is linked on EAS)."
+          eas build --platform android --profile preview --non-interactive --no-wait
+
+          ios_args=(build --platform ios --profile preview --non-interactive --no-wait)
           if [ "${WANT_SUBMIT}" = "true" ]; then
-            echo "Auto-submit enabled (manual dispatch)."
-            args+=(--auto-submit)
+            if [ -z "${EXPO_ASC_APP_ID:-}" ]; then
+              echo "::error::submit=true requires secret EXPO_ASC_APP_ID"
+              exit 1
+            fi
+            echo "Building iOS with TestFlight auto-submit."
+            ios_args+=(--auto-submit)
           else
-            echo "Build only — configure Play Google Service Account on EAS before enabling submit."
+            echo "Building iOS (build only)."
           fi
-          eas "${args[@]}"
+          eas "${ios_args[@]}"

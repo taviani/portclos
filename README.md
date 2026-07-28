@@ -73,7 +73,7 @@ Never put hostnames, paths, or passwords in the repository.
 
 Workflow: [`.github/workflows/mobile.yml`](.github/workflows/mobile.yml) on changes under `apps/mobile/` (or manual dispatch).
 
-Push to `main` runs **build only**. Auto-submit is opt-in via **Actions → Mobile → Run workflow → submit = true**, and only after Play credentials exist on EAS.
+Push to `main` runs **build only**. Auto-submit is opt-in via **Actions → Mobile → Run workflow → submit = true** (iOS → TestFlight). Android stays build-only until a Play service account is linked on EAS.
 
 ### One-time Expo / store setup
 
@@ -86,13 +86,13 @@ Push to `main` runs **build only**. Auto-submit is opt-in via **Actions → Mobi
    npx eas-cli@latest credentials
    ```
 
-4. **Android submit (required for `--auto-submit`)** — link a Google Play service account JSON via EAS (interactive; cannot be done by CI alone):
+4. **Android store submit (optional later)** — link a Google Play service account JSON via EAS (interactive; cannot be done by CI alone):
 
    ```bash
    npx eas-cli@latest credentials -p android
    ```
 
-5. Optional: GitHub secret `EXPO_ASC_APP_ID` for iOS submit.
+5. GitHub secret `EXPO_ASC_APP_ID` for iOS TestFlight submit when using `submit=true`.
 
 ### GitHub secrets (mobile)
 
