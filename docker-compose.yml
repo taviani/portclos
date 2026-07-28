@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-portclos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portclos}
+      POSTGRES_DB: ${POSTGRES_DB:-portclos}
+    # Bind localhost only — never expose Postgres on the public interface.
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - portclos_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-portclos} -d ${POSTGRES_DB:-portclos}"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./services/api
+    ports:
+      - "${API_HOST_PORT:-8080}:8080"
+    env_file: .env
+    environment:
+      PORT: "8080"
+      # Inside Docker, Postgres is the "db" service (overrides host DATABASE_URL from .env).
+      DATABASE_URL: postgres://${POSTGRES_USER:-portclos}:${POSTGRES_PASSWORD:-portclos}@db:5432/${POSTGRES_DB:-portclos}?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  portclos_pg:

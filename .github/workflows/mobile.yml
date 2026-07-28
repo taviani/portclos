@@ -1,0 +1,111 @@
+name: Mobile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/mobile.yml"
+  workflow_dispatch:
+    inputs:
+      submit:
+        description: "Auto-submit to TestFlight / Play after build (needs Play service account on EAS)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: mobile-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  eas-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate mobile secrets
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
+        run: |
+          missing=0
+          for name in EXPO_TOKEN EXPO_PUBLIC_API_URL EXPO_PROJECT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is not configured"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Inject private EAS / build env (not committed)
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_ASC_APP_ID: ${{ secrets.EXPO_ASC_APP_ID }}
+          EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
+          EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const app = JSON.parse(fs.readFileSync("app.json", "utf8"));
+          const projectId = process.env.EXPO_PROJECT_ID;
+          const owner = process.env.EXPO_OWNER;
+          app.expo.extra = app.expo.extra || {};
+          app.expo.extra.eas = { ...(app.expo.extra.eas || {}), projectId };
+          if (owner) {
+            app.expo.owner = owner;
+          }
+          fs.writeFileSync("app.json", JSON.stringify(app, null, 2) + "\n");
+
+          const eas = JSON.parse(fs.readFileSync("eas.json", "utf8"));
+          const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+          for (const name of Object.keys(eas.build || {})) {
+            eas.build[name].env = {
+              ...(eas.build[name].env || {}),
+              EXPO_PUBLIC_API_URL: apiUrl,
+            };
+          }
+          const ascAppId = process.env.EXPO_ASC_APP_ID;
+          if (ascAppId) {
+            for (const name of Object.keys(eas.submit || {})) {
+              eas.submit[name].ios = {
+                ...(eas.submit[name].ios || {}),
+                ascAppId,
+              };
+            }
+          }
+          fs.writeFileSync("eas.json", JSON.stringify(eas, null, 2) + "\n");
+          NODE
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: EAS build (optional auto-submit)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          WANT_SUBMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.submit || false }}
+        run: |
+          set -euo pipefail
+          args=(build --platform all --profile preview --non-interactive --no-wait)
+          if [ "${WANT_SUBMIT}" = "true" ]; then
+            echo "Auto-submit enabled (manual dispatch)."
+            args+=(--auto-submit)
+          else
+            echo "Build only — configure Play Google Service Account on EAS before enabling submit."
+          fi
+          eas "${args[@]}"
