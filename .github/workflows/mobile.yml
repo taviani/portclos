@@ -30,9 +30,10 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
         run: |
           missing=0
-          for name in EXPO_TOKEN EXPO_PUBLIC_API_URL; do
+          for name in EXPO_TOKEN EXPO_PUBLIC_API_URL EXPO_PROJECT_ID; do
             if [ -z "${!name}" ]; then
               echo "::error::Secret $name is not configured"
               missing=1
@@ -49,13 +50,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Inject build env into eas.json
+      - name: Inject private EAS / build env (not committed)
         env:
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
           EXPO_ASC_APP_ID: ${{ secrets.EXPO_ASC_APP_ID }}
+          EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
+          EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
         run: |
           node <<'NODE'
           const fs = require("fs");
+          const app = JSON.parse(fs.readFileSync("app.json", "utf8"));
+          const projectId = process.env.EXPO_PROJECT_ID;
+          const owner = process.env.EXPO_OWNER;
+          app.expo.extra = app.expo.extra || {};
+          app.expo.extra.eas = { ...(app.expo.extra.eas || {}), projectId };
+          if (owner) {
+            app.expo.owner = owner;
+          }
+          fs.writeFileSync("app.json", JSON.stringify(app, null, 2) + "\n");
+
           const eas = JSON.parse(fs.readFileSync("eas.json", "utf8"));
           const apiUrl = process.env.EXPO_PUBLIC_API_URL;
           for (const name of Object.keys(eas.build || {})) {

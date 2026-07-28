@@ -77,38 +77,39 @@ Push to `main` runs **build only**. Auto-submit is opt-in via **Actions → Mobi
 
 ### One-time Expo / store setup
 
-1. `cd apps/mobile && npx eas-cli@latest login && npx eas-cli@latest init`
-2. Create the app in App Store Connect and Google Play Console (`com.portclos.app`).
-3. Configure signing credentials (stored by Expo, not in git):
+1. Locally: `cd apps/mobile && npx eas-cli@latest login && npx eas-cli@latest init` — **do not commit** `owner` / `projectId` if the CLI writes them into `app.json`.
+2. Create the app in App Store Connect and Google Play Console (bundle / package id from `app.json`).
+3. Configure signing credentials in EAS only (not in git):
 
    ```bash
    cd apps/mobile
    npx eas-cli@latest credentials
    ```
 
-4. **Android submit (required for `--auto-submit`)** — link a Google Play **service account** JSON via EAS (interactive; cannot be done by CI alone):
+4. **Android submit (required for `--auto-submit`)** — link a Google Play service account JSON via EAS (interactive; cannot be done by CI alone):
 
    ```bash
    npx eas-cli@latest credentials -p android
    ```
 
-   In Play Console: create a service account with access to the app, download the JSON, then choose it in the EAS credentials flow for **Google Service Account Keys**.
-
-5. Optional: set GitHub secret `EXPO_ASC_APP_ID` (numeric App Store Connect app id) for iOS submit.
+5. Optional: GitHub secret `EXPO_ASC_APP_ID` for iOS submit.
 
 ### GitHub secrets (mobile)
 
 | Secret | Purpose |
 |--------|---------|
-| `EXPO_TOKEN` | Expo access token ([expo.dev](https://expo.dev) → Access tokens) |
+| `EXPO_TOKEN` | Expo access token |
 | `EXPO_PUBLIC_API_URL` | Public HTTPS API base URL baked into the binary |
+| `EXPO_PROJECT_ID` | EAS project id (injected into `app.json` at build time) |
+| `EXPO_OWNER` | (Optional) Expo account / org slug for EAS |
 | `EXPO_ASC_APP_ID` | (Optional) App Store Connect numeric app id for submit |
 
-Apple/Google signing credentials should live in **EAS credentials**, not in git.
+Apple/Google signing credentials and account identifiers live in **EAS / GitHub Secrets**, never in git.
 
 ## Safety
 
 - Never commit `.env`, private keys, PEM files, or service-account JSON.
+- Never commit real domain names, EAS `owner` / `projectId`, Apple Team / ASC ids, or Play account ids.
 - CI `rsync` excludes `.env`, `.env.*`, and `secrets/`.
 - Postgres is published on `127.0.0.1` only in compose.
 - Docs and examples use placeholders (`auth.example.com`, etc.).
