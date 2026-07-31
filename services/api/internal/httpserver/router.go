@@ -2,15 +2,19 @@ package httpserver
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/taviani/portclos/services/api/internal/auth"
+	"github.com/taviani/portclos/services/api/internal/store"
 )
 
-func NewRouter(validator *auth.Validator) http.Handler {
+func NewRouter(validator *auth.Validator, db *store.Store) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -33,6 +37,65 @@ func NewRouter(validator *auth.Validator) http.Handler {
 				"sub":   user.Subject,
 				"email": user.Email,
 			})
+		})
+
+		pr.Get("/houses", func(w http.ResponseWriter, r *http.Request) {
+			user, ok := auth.UserFromContext(r.Context())
+			if !ok {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+			list, err := db.ListHouses(r.Context(), user.Subject)
+			if err != nil {
+				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, list)
+		})
+
+		pr.Post("/houses", func(w http.ResponseWriter, r *http.Request) {
+			user, ok := auth.UserFromContext(r.Context())
+			if !ok {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+			var body struct {
+				Name string `json:"name"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+				return
+			}
+			name := strings.TrimSpace(body.Name)
+			if name == "" {
+				http.Error(w, `{"error":"name_required"}`, http.StatusBadRequest)
+				return
+			}
+			h, err := db.CreateHouse(r.Context(), user.Subject, name)
+			if err != nil {
+				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusCreated, h)
+		})
+
+		pr.Get("/houses/{id}", func(w http.ResponseWriter, r *http.Request) {
+			user, ok := auth.UserFromContext(r.Context())
+			if !ok {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+			id := chi.URLParam(r, "id")
+			h, err := db.GetHouseForMember(r.Context(), id, user.Subject)
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+					return
+				}
+				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, h)
 		})
 	})
 

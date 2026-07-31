@@ -13,6 +13,7 @@ import (
 	"github.com/taviani/portclos/services/api/internal/auth"
 	"github.com/taviani/portclos/services/api/internal/config"
 	"github.com/taviani/portclos/services/api/internal/httpserver"
+	"github.com/taviani/portclos/services/api/internal/store"
 )
 
 func main() {
@@ -30,9 +31,15 @@ func main() {
 		log.Printf("warning: AUTH_DISABLED=true — JWT checks are off")
 	}
 
+	db, err := store.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("store: %v", err)
+	}
+	defer db.Close()
+
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
-		Handler:      httpserver.NewRouter(validator),
+		Handler:      httpserver.NewRouter(validator, db),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}

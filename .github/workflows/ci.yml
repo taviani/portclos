@@ -50,17 +50,20 @@ jobs:
           cp .env.example .env
           docker compose up -d --build --wait
 
-      - name: Smoke test /health
+      - name: Smoke test /health and houses
         run: |
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:8080/health; then
-              exit 0
+              break
             fi
             sleep 2
           done
-          echo "::error::health check failed"
-          docker compose logs
-          exit 1
+          curl -fsS http://localhost:8080/health
+          curl -fsS -X POST http://localhost:8080/houses \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"Maison test"}' \
+            | grep -q 'Maison test'
+          curl -fsS http://localhost:8080/houses | grep -q 'Maison test'
 
       - name: Tear down
         if: always()

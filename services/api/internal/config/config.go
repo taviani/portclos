@@ -27,10 +27,14 @@ func Load() (Config, error) {
 	if !disabled && issuer == "" {
 		return Config{}, fmt.Errorf("AUTH_ISSUER is required (or set AUTH_DISABLED=true for local only)")
 	}
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		return Config{}, fmt.Errorf("DATABASE_URL is required")
+	}
 	return Config{
 		Port:         port,
 		AuthIssuer:   issuer,
 		AuthDisabled: disabled,
-		DatabaseURL:  os.Getenv("DATABASE_URL"),
+		DatabaseURL:  dbURL,
 	}, nil
 }
