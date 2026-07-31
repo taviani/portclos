@@ -1,42 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
-import { fetchHouses, House } from '@/lib/api';
-import { getAccessToken, getCurrentHouseId } from '@/lib/auth';
+import { useCurrentHouse } from '@/hooks/useHouses';
+import { useSession } from '@/providers/SessionProvider';
 
 export default function HomeScreen() {
-  const [house, setHouse] = useState<House | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { token, ready } = useSession();
+  const { house, isLoading, error } = useCurrentHouse();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const token = await getAccessToken();
-      if (!token) {
-        setHouse(null);
-        return;
-      }
-      const list = await fetchHouses(token);
-      const currentId = await getCurrentHouseId();
-      const current =
-        list.find((h) => h.id === currentId) ?? (list.length > 0 ? list[0] : null);
-      setHouse(current);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'failed');
-      setHouse(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (loading) {
+  if (!ready || (token && isLoading)) {
     return (
       <View style={styles.center}>
         <ActivityIndicator />
@@ -47,7 +19,7 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Portclos</Text>
-      {!house ? (
+      {!token || !house ? (
         <Text style={styles.sub}>
           Connecte-toi et choisis / crée une maison dans l’onglet Compte.
         </Text>
@@ -59,7 +31,7 @@ export default function HomeScreen() {
           </Text>
         </>
       )}
-      {error ? <Text style={styles.err}>{error}</Text> : null}
+      {error ? <Text style={styles.err}>{error.message}</Text> : null}
     </View>
   );
 }

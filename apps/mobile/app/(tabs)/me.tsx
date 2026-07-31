@@ -6,20 +6,26 @@ import {
   TextInput,
 } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { Text, View, useThemeColor } from '@/components/Themed';
-import { createHouse, fetchHouses, fetchMe, House } from '@/lib/api';
+import {
+  useCreateHouse,
+  useCurrentHouseId,
+  useHouses,
+  useMe,
+  useSelectHouse,
+} from '@/hooks/useHouses';
 import {
   authClientId,
   discovery,
   exchangeCodeForToken,
-  getAccessToken,
   isAuthConfigured,
   redirectUri,
-  setAccessToken,
   setCurrentHouseId,
-  getCurrentHouseId,
 } from '@/lib/auth';
+import { queryKeys } from '@/lib/queryKeys';
+import { useSession } from '@/providers/SessionProvider';
 
 export default function MeScreen() {
   const inputColor = useThemeColor({}, 'text');
@@ -27,12 +33,15 @@ export default function MeScreen() {
   const inputBg = useThemeColor({ light: '#fff', dark: '#1c1c1e' }, 'background');
   const placeholderColor = useThemeColor({ light: '#888', dark: '#8e8e93' }, 'text');
 
-  const [token, setToken] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
-  const [houses, setHouses] = useState<House[]>([]);
-  const [currentHouseId, setCurrent] = useState<string | null>(null);
+  const { token, ready, setSessionToken, signOut } = useSession();
+  const qc = useQueryClient();
+  const me = useMe();
+  const houses = useHouses();
+  const currentHouseId = useCurrentHouseId();
+  const createHouse = useCreateHouse();
+  const selectHouse = useSelectHouse();
+
   const [newHouse, setNewHouse] = useState('');
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [redirect, setRedirect] = useState('');
@@ -48,40 +57,20 @@ export default function MeScreen() {
     discovery(),
   );
 
-  const reload = useCallback(async (accessToken: string) => {
-    const me = await fetchMe(accessToken);
-    setEmail(me.email || me.sub);
-    const list = await fetchHouses(accessToken);
-    setHouses(list);
-    const saved = await getCurrentHouseId();
-    if (saved && list.some((h) => h.id === saved)) {
-      setCurrent(saved);
-    } else if (list.length > 0) {
-      setCurrent(list[0].id);
-      await setCurrentHouseId(list[0].id);
-    } else {
-      setCurrent(null);
-    }
+  useEffect(() => {
+    setRedirect(redirectUri());
   }, []);
 
   useEffect(() => {
-    setRedirect(redirectUri());
+    if (!token || !houses.data?.length || currentHouseId.data) {
+      return;
+    }
+    const first = houses.data[0];
     void (async () => {
-      try {
-        const existing = await getAccessToken();
-        if (existing) {
-          setToken(existing);
-          await reload(existing);
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'session failed');
-        await setAccessToken(null);
-        setToken(null);
-      } finally {
-        setLoading(false);
-      }
+      await setCurrentHouseId(first.id);
+      await qc.invalidateQueries({ queryKey: queryKeys.currentHouseId });
     })();
-  }, [reload]);
+  }, [token, houses.data, currentHouseId.data, qc]);
 
   useEffect(() => {
     if (response?.type !== 'success' || !request?.codeVerifier) {
@@ -100,16 +89,14 @@ export default function MeScreen() {
           code,
           codeVerifier: request.codeVerifier!,
         });
-        await setAccessToken(accessToken);
-        setToken(accessToken);
-        await reload(accessToken);
+        await setSessionToken(accessToken);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'login failed');
       } finally {
         setBusy(false);
       }
     })();
-  }, [response, request, reload]);
+  }, [response, request, setSessionToken]);
 
   const onLogin = useCallback(async () => {
     setError(null);
@@ -128,49 +115,44 @@ export default function MeScreen() {
     setBusy(true);
     setError(null);
     try {
-      // Works only when API AUTH_DISABLED=true (local / CI).
-      await setAccessToken('local-dev');
-      setToken('local-dev');
-      await reload('local-dev');
+      await setSessionToken('local-dev');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'local mode failed');
     } finally {
       setBusy(false);
     }
-  }, [reload]);
-
-  const onLogout = useCallback(async () => {
-    await setAccessToken(null);
-    await setCurrentHouseId(null);
-    setToken(null);
-    setEmail(null);
-    setHouses([]);
-    setCurrent(null);
-  }, []);
+  }, [setSessionToken]);
 
   const onCreateHouse = useCallback(async () => {
-    if (!token || !newHouse.trim()) return;
-    setBusy(true);
+    if (!newHouse.trim()) return;
     setError(null);
     try {
-      const h = await createHouse(token, newHouse.trim());
+      await createHouse.mutateAsync(newHouse.trim());
       setNewHouse('');
-      await setCurrentHouseId(h.id);
-      setCurrent(h.id);
-      await reload(token);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'create failed');
-    } finally {
-      setBusy(false);
     }
-  }, [token, newHouse, reload]);
+  }, [newHouse, createHouse]);
 
-  const onSelectHouse = useCallback(async (id: string) => {
-    await setCurrentHouseId(id);
-    setCurrent(id);
-  }, []);
+  const onSelectHouse = useCallback(
+    async (id: string) => {
+      try {
+        await selectHouse.mutateAsync(id);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'select failed');
+      }
+    },
+    [selectHouse],
+  );
 
-  if (loading) {
+  const email = me.data?.email || me.data?.sub || null;
+  const mutating = busy || createHouse.isPending || selectHouse.isPending;
+  const queryError =
+    (me.error instanceof Error && me.error.message) ||
+    (houses.error instanceof Error && houses.error.message) ||
+    null;
+
+  if (!ready) {
     return (
       <View style={styles.center}>
         <ActivityIndicator />
@@ -204,22 +186,24 @@ export default function MeScreen() {
         </>
       ) : (
         <>
-          <Text style={styles.sub}>{email}</Text>
-          <Pressable style={styles.secondary} onPress={onLogout}>
+          <Text style={styles.sub}>{email ?? '…'}</Text>
+          <Pressable style={styles.secondary} onPress={() => void signOut()}>
             <Text style={styles.secondaryText}>Se déconnecter</Text>
           </Pressable>
 
           <Text style={styles.section}>Maisons</Text>
-          {houses.length === 0 ? (
+          {houses.isLoading ? (
+            <ActivityIndicator />
+          ) : (houses.data?.length ?? 0) === 0 ? (
             <Text style={styles.hint}>Aucune maison — crée la première.</Text>
           ) : (
-            houses.map((h) => {
-              const active = h.id === currentHouseId;
+            houses.data!.map((h) => {
+              const active = h.id === currentHouseId.data;
               return (
                 <Pressable
                   key={h.id}
                   style={[styles.row, active && styles.rowActive]}
-                  onPress={() => onSelectHouse(h.id)}
+                  onPress={() => void onSelectHouse(h.id)}
                 >
                   <Text style={active ? styles.rowTextActive : undefined}>
                     {h.name} ({h.role})
@@ -245,15 +229,15 @@ export default function MeScreen() {
             keyboardAppearance="default"
           />
           <Pressable
-            style={[styles.button, busy && styles.disabled]}
-            onPress={onCreateHouse}
-            disabled={busy || !newHouse.trim()}
+            style={[styles.button, mutating && styles.disabled]}
+            onPress={() => void onCreateHouse()}
+            disabled={mutating || !newHouse.trim()}
           >
             <Text style={styles.buttonText}>Créer une maison</Text>
           </Pressable>
         </>
       )}
-      {error ? <Text style={styles.err}>{error}</Text> : null}
+      {error || queryError ? <Text style={styles.err}>{error || queryError}</Text> : null}
     </View>
   );
 }

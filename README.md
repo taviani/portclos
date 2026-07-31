@@ -50,6 +50,8 @@ npm start
 
 Auth: Expo AuthSession + PKCE against the shared issuer. Current house id is stored on-device (SecureStore).
 
+Client data: **TanStack Query** (`QueryClientProvider` + `queryKeys`) for server state; session token via `SessionProvider`. Creating / selecting a house invalidates `houses` / `currentHouseId` so the Accueil tab updates without remounting. Future calendar keys: `occupations(houseId, month)`.
+
 ## Deploy — API (GitHub Actions → VPS)
 
 On each push to `main`, CI runs checks + smoke, then deploys via SSH/`rsync` + `docker-compose up -d --build`.
