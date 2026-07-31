@@ -1,36 +1,64 @@
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
-import { fetchHealth } from '@/lib/api';
+import { fetchHouses, House } from '@/lib/api';
+import { getAccessToken, getCurrentHouseId } from '@/lib/auth';
 
 export default function HomeScreen() {
-  const [status, setStatus] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [house, setHouse] = useState<House | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const ping = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const health = await fetchHealth();
-      setStatus(health.status);
+      const token = await getAccessToken();
+      if (!token) {
+        setHouse(null);
+        return;
+      }
+      const list = await fetchHouses(token);
+      const currentId = await getCurrentHouseId();
+      const current =
+        list.find((h) => h.id === currentId) ?? (list.length > 0 ? list[0] : null);
+      setHouse(current);
     } catch (e) {
-      setStatus(null);
-      setError(e instanceof Error ? e.message : 'request failed');
+      setError(e instanceof Error ? e.message : 'failed');
+      setHouse(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Portclos</Text>
-      <Text style={styles.sub}>Maison partagée — agenda, checklists, todos, photos.</Text>
-      <Pressable style={styles.button} onPress={ping} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Ping API</Text>}
-      </Pressable>
-      {status ? <Text style={styles.ok}>API: {status}</Text> : null}
+      {!house ? (
+        <Text style={styles.sub}>
+          Connecte-toi et choisis / crée une maison dans l’onglet Compte.
+        </Text>
+      ) : (
+        <>
+          <Text style={styles.house}>{house.name}</Text>
+          <Text style={styles.sub}>
+            Maison courante ({house.role}). Agenda, checklists, todos — à venir.
+          </Text>
+        </>
+      )}
       {error ? <Text style={styles.err}>{error}</Text> : null}
     </View>
   );
@@ -43,8 +71,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: {
     fontSize: 28,
+    fontWeight: '600',
+  },
+  house: {
+    marginTop: 16,
+    fontSize: 20,
     fontWeight: '600',
   },
   sub: {
@@ -52,23 +90,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.7,
     lineHeight: 22,
-  },
-  button: {
-    marginTop: 28,
-    backgroundColor: '#1a1612',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    minWidth: 140,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  ok: {
-    marginTop: 16,
-    color: '#1e6b3a',
   },
   err: {
     marginTop: 16,

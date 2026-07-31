@@ -34,14 +34,21 @@ go run ./cmd/server
 
 - `GET /health` — public
 - `GET /me` — requires `Authorization: Bearer <access_token>` (unless `AUTH_DISABLED=true`)
+- `GET|POST /houses` — multi-house membership (JWT `sub`)
+- `GET /houses/{id}` — member-only
 
 ## Local mobile
 
 ```bash
 cd apps/mobile
-cp .env.example .env   # EXPO_PUBLIC_API_URL=http://localhost:8080
+cp .env.example .env
+# Set EXPO_PUBLIC_AUTH_ISSUER to your OIDC issuer (local .env only — never commit real hosts)
+# Create OIDC client `portclos` as public+PKCE+invite_only on the auth server
+npm install
 npm start
 ```
+
+Auth: Expo AuthSession + PKCE against the shared issuer. Current house id is stored on-device (SecureStore).
 
 ## Deploy — API (GitHub Actions → VPS)
 
