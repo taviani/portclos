@@ -36,6 +36,8 @@ go run ./cmd/server
 - `GET /me` — requires `Authorization: Bearer <access_token>` (unless `AUTH_DISABLED=true`)
 - `GET|POST /houses` — multi-house membership (JWT `sub`)
 - `GET /houses/{id}` — member-only
+- `GET|POST /houses/{id}/occupations` — occupation ranges (`from`/`to` or body `start_date`/`end_date`)
+- `DELETE /occupations/{id}` — delete own occupation
 
 ## Local mobile
 
