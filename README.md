@@ -107,6 +107,8 @@ Push to `main` runs **build only**. Auto-submit is opt-in via **Actions → Mobi
 |--------|---------|
 | `EXPO_TOKEN` | Expo access token |
 | `EXPO_PUBLIC_API_URL` | Public HTTPS API base URL baked into the binary |
+| `EXPO_PUBLIC_AUTH_ISSUER` | OIDC issuer URL baked into the binary |
+| `EXPO_PUBLIC_AUTH_CLIENT_ID` | (Optional) OIDC client id; defaults to `portclos` |
 | `EXPO_PROJECT_ID` | EAS project id (injected into `app.json` at build time) |
 | `EXPO_OWNER` | (Optional) Expo account / org slug for EAS |
 | `EXPO_ASC_APP_ID` | (Optional) App Store Connect numeric app id for submit |

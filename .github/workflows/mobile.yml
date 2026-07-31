@@ -30,10 +30,11 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_AUTH_ISSUER: ${{ secrets.EXPO_PUBLIC_AUTH_ISSUER }}
           EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
         run: |
           missing=0
-          for name in EXPO_TOKEN EXPO_PUBLIC_API_URL EXPO_PROJECT_ID; do
+          for name in EXPO_TOKEN EXPO_PUBLIC_API_URL EXPO_PUBLIC_AUTH_ISSUER EXPO_PROJECT_ID; do
             if [ -z "${!name}" ]; then
               echo "::error::Secret $name is not configured"
               missing=1
@@ -53,6 +54,8 @@ jobs:
       - name: Inject private EAS / build env (not committed)
         env:
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_AUTH_ISSUER: ${{ secrets.EXPO_PUBLIC_AUTH_ISSUER }}
+          EXPO_PUBLIC_AUTH_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_AUTH_CLIENT_ID }}
           EXPO_ASC_APP_ID: ${{ secrets.EXPO_ASC_APP_ID }}
           EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
           EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
@@ -71,10 +74,14 @@ jobs:
 
           const eas = JSON.parse(fs.readFileSync("eas.json", "utf8"));
           const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+          const authIssuer = process.env.EXPO_PUBLIC_AUTH_ISSUER;
+          const authClientId = process.env.EXPO_PUBLIC_AUTH_CLIENT_ID || "portclos";
           for (const name of Object.keys(eas.build || {})) {
             eas.build[name].env = {
               ...(eas.build[name].env || {}),
               EXPO_PUBLIC_API_URL: apiUrl,
+              EXPO_PUBLIC_AUTH_ISSUER: authIssuer,
+              EXPO_PUBLIC_AUTH_CLIENT_ID: authClientId,
             };
           }
           const ascAppId = process.env.EXPO_ASC_APP_ID;
@@ -98,6 +105,8 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_AUTH_ISSUER: ${{ secrets.EXPO_PUBLIC_AUTH_ISSUER }}
+          EXPO_PUBLIC_AUTH_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_AUTH_CLIENT_ID }}
           EXPO_ASC_APP_ID: ${{ secrets.EXPO_ASC_APP_ID }}
           WANT_SUBMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.submit || false }}
         run: |
