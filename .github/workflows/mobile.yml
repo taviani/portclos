@@ -101,7 +101,7 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: EAS build (optional iOS auto-submit)
+      - name: EAS build iOS (optional TestFlight auto-submit)
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
@@ -111,10 +111,8 @@ jobs:
           WANT_SUBMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.submit || false }}
         run: |
           set -euo pipefail
-          # Build platforms separately so a missing Play GSA cannot block iOS TestFlight submit.
-          echo "Building Android (no auto-submit until Play service account is linked on EAS)."
-          eas build --platform android --profile preview --non-interactive --no-wait
-
+          # Android / Play builds paused until a physical device + Play service account are ready.
+          # Re-enable: eas build --platform android --profile preview --non-interactive --no-wait
           ios_args=(build --platform ios --profile preview --non-interactive --no-wait)
           if [ "${WANT_SUBMIT}" = "true" ]; then
             if [ -z "${EXPO_ASC_APP_ID:-}" ]; then

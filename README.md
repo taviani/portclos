@@ -84,7 +84,7 @@ Never put hostnames, paths, or passwords in the repository.
 
 Workflow: [`.github/workflows/mobile.yml`](.github/workflows/mobile.yml) on changes under `apps/mobile/` (or manual dispatch).
 
-Push to `main` runs **build only**. Auto-submit is opt-in via **Actions → Mobile → Run workflow → submit = true** (iOS → TestFlight). Android stays build-only until a Play service account is linked on EAS.
+Push to `main` runs **iOS build only** (Android/Play paused until a physical device + Play service account). Auto-submit is opt-in via **Actions → Mobile → Run workflow → submit = true** (iOS → TestFlight).
 
 ### One-time Expo / store setup
 
