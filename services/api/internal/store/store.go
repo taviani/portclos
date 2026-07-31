@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -13,6 +14,16 @@ type House struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type Occupation struct {
+	ID        string    `json:"id"`
+	HouseID   string    `json:"house_id"`
+	UserSub   string    `json:"user_sub"`
+	StartDate string    `json:"start_date"`
+	EndDate   string    `json:"end_date"`
+	Note      string    `json:"note"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -57,6 +68,18 @@ CREATE TABLE IF NOT EXISTS house_members (
   PRIMARY KEY (house_id, user_sub)
 );
 CREATE INDEX IF NOT EXISTS house_members_user_sub_idx ON house_members (user_sub);
+CREATE TABLE IF NOT EXISTS occupations (
+  id UUID PRIMARY KEY,
+  house_id UUID NOT NULL REFERENCES houses (id) ON DELETE CASCADE,
+  user_sub TEXT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (end_date >= start_date)
+);
+CREATE INDEX IF NOT EXISTS occupations_house_range_idx
+  ON occupations (house_id, start_date, end_date);
 `)
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)
@@ -128,4 +151,69 @@ JOIN house_members m ON m.house_id = h.id
 WHERE h.id = $1 AND m.user_sub = $2`, houseID, userSub,
 	).Scan(&h.ID, &h.Name, &h.Role, &h.CreatedAt)
 	return h, err
+}
+
+func formatDate(t time.Time) string {
+	return t.Format("2006-01-02")
+}
+
+func (s *Store) ListOccupations(ctx context.Context, houseID string, from, to time.Time) ([]Occupation, error) {
+	rows, err := s.pool.Query(ctx, `
+SELECT id::text, house_id::text, user_sub, start_date, end_date, note, created_at
+FROM occupations
+WHERE house_id = $1
+  AND start_date <= $3::date
+  AND end_date >= $2::date
+ORDER BY start_date ASC, created_at ASC`, houseID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Occupation
+	for rows.Next() {
+		var o Occupation
+		var start, end time.Time
+		if err := rows.Scan(&o.ID, &o.HouseID, &o.UserSub, &start, &end, &o.Note, &o.CreatedAt); err != nil {
+			return nil, err
+		}
+		o.StartDate = formatDate(start)
+		o.EndDate = formatDate(end)
+		out = append(out, o)
+	}
+	if out == nil {
+		out = []Occupation{}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateOccupation(ctx context.Context, houseID, userSub string, start, end time.Time, note string) (Occupation, error) {
+	id := uuid.NewString()
+	var o Occupation
+	var startOut, endOut time.Time
+	err := s.pool.QueryRow(ctx, `
+INSERT INTO occupations (id, house_id, user_sub, start_date, end_date, note)
+VALUES ($1, $2, $3, $4::date, $5::date, $6)
+RETURNING id::text, house_id::text, user_sub, start_date, end_date, note, created_at`,
+		id, houseID, userSub, start, end, note,
+	).Scan(&o.ID, &o.HouseID, &o.UserSub, &startOut, &endOut, &o.Note, &o.CreatedAt)
+	if err != nil {
+		return Occupation{}, err
+	}
+	o.StartDate = formatDate(startOut)
+	o.EndDate = formatDate(endOut)
+	return o, nil
+}
+
+func (s *Store) DeleteOccupation(ctx context.Context, occupationID, userSub string) error {
+	tag, err := s.pool.Exec(ctx, `
+DELETE FROM occupations
+WHERE id = $1 AND user_sub = $2`, occupationID, userSub)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }

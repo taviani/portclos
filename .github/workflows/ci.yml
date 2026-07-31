@@ -59,11 +59,18 @@ jobs:
             sleep 2
           done
           curl -fsS http://localhost:8080/health
-          curl -fsS -X POST http://localhost:8080/houses \
+          house_json=$(curl -fsS -X POST http://localhost:8080/houses \
             -H 'Content-Type: application/json' \
-            -d '{"name":"Maison test"}' \
-            | grep -q 'Maison test'
+            -d '{"name":"Maison test"}')
+          echo "$house_json" | grep -q 'Maison test'
+          house_id=$(echo "$house_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
           curl -fsS http://localhost:8080/houses | grep -q 'Maison test'
+          curl -fsS -X POST "http://localhost:8080/houses/${house_id}/occupations" \
+            -H 'Content-Type: application/json' \
+            -d '{"start_date":"2026-08-01","end_date":"2026-08-03","note":"weekend"}' \
+            | grep -q 'weekend'
+          curl -fsS "http://localhost:8080/houses/${house_id}/occupations?from=2026-08-01&to=2026-08-31" \
+            | grep -q 'weekend'
 
       - name: Tear down
         if: always()
