@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 
-import { Text, View } from '@/components/Themed';
+import { Text, View, useThemeColor } from '@/components/Themed';
 import { createHouse, fetchHouses, fetchMe, House } from '@/lib/api';
 import {
   authClientId,
@@ -22,6 +22,11 @@ import {
 } from '@/lib/auth';
 
 export default function MeScreen() {
+  const inputColor = useThemeColor({}, 'text');
+  const inputBorder = useThemeColor({ light: '#ccc', dark: '#555' }, 'text');
+  const inputBg = useThemeColor({ light: '#fff', dark: '#1c1c1e' }, 'background');
+  const placeholderColor = useThemeColor({ light: '#888', dark: '#8e8e93' }, 'text');
+
   const [token, setToken] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [houses, setHouses] = useState<House[]>([]);
@@ -225,11 +230,19 @@ export default function MeScreen() {
           )}
 
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                color: inputColor,
+                borderColor: inputBorder,
+                backgroundColor: inputBg,
+              },
+            ]}
             placeholder="Nom de la maison"
-            placeholderTextColor="#888"
+            placeholderTextColor={placeholderColor}
             value={newHouse}
             onChangeText={setNewHouse}
+            keyboardAppearance="default"
           />
           <Pressable
             style={[styles.button, busy && styles.disabled]}
@@ -298,7 +311,6 @@ const styles = StyleSheet.create({
   input: {
     marginTop: 12,
     borderWidth: 1,
-    borderColor: '#ccc',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
