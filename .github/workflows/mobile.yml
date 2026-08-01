@@ -1,11 +1,8 @@
 name: Mobile
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "apps/mobile/**"
-      - ".github/workflows/mobile.yml"
+  # Manual only — avoid burning EAS free-plan quota on every main merge.
+  # Local dev: apps/mobile → npx expo start --ios (simulator).
   workflow_dispatch:
     inputs:
       submit:

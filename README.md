@@ -82,9 +82,9 @@ Never put hostnames, paths, or passwords in the repository.
 
 ## Deploy — mobile (EAS → TestFlight + Play Internal)
 
-Workflow: [`.github/workflows/mobile.yml`](.github/workflows/mobile.yml) on changes under `apps/mobile/` (or manual dispatch).
+Workflow: [`.github/workflows/mobile.yml`](.github/workflows/mobile.yml) — **manual only** (`Actions → Mobile → Run workflow`). No EAS build on push to `main` (saves free-plan quota; prefer local simulator: `cd apps/mobile && npx expo start --ios`).
 
-Push to `main` runs **iOS build only** (Android/Play paused until a physical device + Play service account). Auto-submit is opt-in via **Actions → Mobile → Run workflow → submit = true** (iOS → TestFlight).
+Optional: set **submit = true** to auto-submit iOS to TestFlight after the build. Android/Play stays paused until a physical device + Play service account.
 
 ### One-time Expo / store setup
 
