@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -31,12 +31,35 @@ function monthLabel(month: string): string {
   });
 }
 
+function formatDay(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('fr-FR', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+}
+
+function compareISO(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function inRange(day: string, start: string | null, end: string | null): boolean {
+  if (!start || !end) return false;
+  const lo = compareISO(start, end) <= 0 ? start : end;
+  const hi = compareISO(start, end) <= 0 ? end : start;
+  return day >= lo && day <= hi;
+}
+
 export default function HomeScreen() {
   const inputColor = useThemeColor({}, 'text');
   const inputBorder = useThemeColor({ light: '#ccc', dark: '#555' }, 'text');
   const inputBg = useThemeColor({ light: '#fff', dark: '#1c1c1e' }, 'background');
   const placeholderColor = useThemeColor({ light: '#888', dark: '#8e8e93' }, 'text');
   const dayOccupiedBg = useThemeColor({ light: '#dceaf5', dark: '#1e3a4f' }, 'background');
+  const rangeBg = useThemeColor({ light: '#c8e0c8', dark: '#1f3d2a' }, 'background');
+  const endpointBg = useThemeColor({ light: '#1a1612', dark: '#e8e4df' }, 'background');
+  const endpointFg = useThemeColor({ light: '#fff', dark: '#1a1612' }, 'text');
 
   const { token, ready } = useSession();
   const { house, isLoading, error } = useCurrentHouse();
@@ -46,14 +69,39 @@ export default function HomeScreen() {
   const createOcc = useCreateOccupation(house?.id);
   const deleteOcc = useDeleteOccupation(house?.id);
 
-  const today = useMemo(() => {
-    const n = new Date();
-    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
-  }, []);
-  const [startDate, setStartDate] = useState(today);
-  const [endDate, setEndDate] = useState(today);
+  const [rangeStart, setRangeStart] = useState<string | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+
+  const selectedStart =
+    rangeStart && rangeEnd
+      ? compareISO(rangeStart, rangeEnd) <= 0
+        ? rangeStart
+        : rangeEnd
+      : rangeStart;
+  const selectedEnd =
+    rangeStart && rangeEnd
+      ? compareISO(rangeStart, rangeEnd) <= 0
+        ? rangeEnd
+        : rangeStart
+      : rangeEnd;
+
+  const onDayPress = useCallback((day: string) => {
+    setFormError(null);
+    if (!rangeStart || (rangeStart && rangeEnd)) {
+      setRangeStart(day);
+      setRangeEnd(null);
+      return;
+    }
+    setRangeEnd(day);
+  }, [rangeStart, rangeEnd]);
+
+  const clearSelection = useCallback(() => {
+    setRangeStart(null);
+    setRangeEnd(null);
+    setFormError(null);
+  }, []);
 
   const occupiedDays = useMemo(() => {
     const set = new Set<string>();
@@ -73,8 +121,8 @@ export default function HomeScreen() {
 
   const calendarDays = useMemo(() => {
     const [y, m] = month.split('-').map(Number);
-    const firstWeekday = new Date(y, m - 1, 1).getDay(); // 0 Sun
-    const startPad = (firstWeekday + 6) % 7; // Mon-first
+    const firstWeekday = new Date(y, m - 1, 1).getDay();
+    const startPad = (firstWeekday + 6) % 7;
     const daysInMonth = new Date(y, m, 0).getDate();
     const cells: Array<{ label: string; key: string | null }> = [];
     for (let i = 0; i < startPad; i++) cells.push({ label: '', key: null });
@@ -92,6 +140,8 @@ export default function HomeScreen() {
       </View>
     );
   }
+
+  const canSave = !!selectedStart && !!selectedEnd && !createOcc.isPending;
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -115,6 +165,14 @@ export default function HomeScreen() {
             </Pressable>
           </View>
 
+          <Text style={styles.hintCentered}>
+            {!rangeStart
+              ? 'Touche le jour de début, puis le jour de fin.'
+              : !rangeEnd
+                ? `Début ${formatDay(rangeStart)} — touche la fin.`
+                : `${formatDay(selectedStart!)} → ${formatDay(selectedEnd!)}`}
+          </Text>
+
           <View style={styles.weekHeader}>
             {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
               <Text key={`${d}-${i}`} style={styles.weekDay}>
@@ -124,20 +182,43 @@ export default function HomeScreen() {
           </View>
           <View style={styles.grid}>
             {calendarDays.map((cell, i) => {
-              const occupied = cell.key ? occupiedDays.has(cell.key) : false;
+              if (!cell.key) {
+                return <View key={`pad-${i}`} style={styles.dayCell} />;
+              }
+              const occupied = occupiedDays.has(cell.key);
+              const isStart = cell.key === selectedStart;
+              const isEnd = cell.key === selectedEnd;
+              const isEndpoint = isStart || isEnd;
+              const inSel = inRange(cell.key, selectedStart, selectedEnd);
               return (
-                <View
-                  key={cell.key ?? `pad-${i}`}
+                <Pressable
+                  key={cell.key}
+                  onPress={() => onDayPress(cell.key!)}
                   style={[
                     styles.dayCell,
-                    occupied && { backgroundColor: dayOccupiedBg },
+                    occupied && !inSel && { backgroundColor: dayOccupiedBg },
+                    inSel && !isEndpoint && { backgroundColor: rangeBg },
+                    isEndpoint && { backgroundColor: endpointBg },
                   ]}
                 >
-                  <Text style={styles.dayLabel}>{cell.label}</Text>
-                </View>
+                  <Text
+                    style={[
+                      styles.dayLabel,
+                      isEndpoint && { color: endpointFg, fontWeight: '700' },
+                    ]}
+                  >
+                    {cell.label}
+                  </Text>
+                </Pressable>
               );
             })}
           </View>
+
+          {(rangeStart || rangeEnd) && (
+            <Pressable onPress={clearSelection} style={styles.clearBtn}>
+              <Text style={styles.clearText}>Effacer la sélection</Text>
+            </Pressable>
+          )}
 
           <Text style={styles.section}>Occupations</Text>
           {occupations.isLoading ? (
@@ -151,7 +232,7 @@ export default function HomeScreen() {
                 <View key={o.id} style={styles.occRow}>
                   <View style={{ flex: 1 }}>
                     <Text>
-                      {o.start_date} → {o.end_date}
+                      {formatDay(o.start_date)} → {formatDay(o.end_date)}
                       {mine ? ' · toi' : ''}
                     </Text>
                     {o.note ? <Text style={styles.hint}>{o.note}</Text> : null}
@@ -169,51 +250,44 @@ export default function HomeScreen() {
             })
           )}
 
-          <Text style={styles.section}>Ajouter une présence</Text>
+          <Text style={styles.section}>Enregistrer la présence</Text>
           <TextInput
-            style={[styles.input, { color: inputColor, borderColor: inputBorder, backgroundColor: inputBg }]}
-            placeholder="Début YYYY-MM-DD"
-            placeholderTextColor={placeholderColor}
-            value={startDate}
-            onChangeText={setStartDate}
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={[styles.input, { color: inputColor, borderColor: inputBorder, backgroundColor: inputBg }]}
-            placeholder="Fin YYYY-MM-DD"
-            placeholderTextColor={placeholderColor}
-            value={endDate}
-            onChangeText={setEndDate}
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={[styles.input, { color: inputColor, borderColor: inputBorder, backgroundColor: inputBg }]}
+            style={[
+              styles.input,
+              { color: inputColor, borderColor: inputBorder, backgroundColor: inputBg },
+            ]}
             placeholder="Note (optionnel)"
             placeholderTextColor={placeholderColor}
             value={note}
             onChangeText={setNote}
           />
           <Pressable
-            style={[styles.button, createOcc.isPending && styles.disabled]}
-            disabled={createOcc.isPending}
+            style={[styles.button, !canSave && styles.disabled]}
+            disabled={!canSave}
             onPress={() => {
+              if (!selectedStart || !selectedEnd) return;
               setFormError(null);
               void createOcc
                 .mutateAsync({
-                  start_date: startDate.trim(),
-                  end_date: endDate.trim(),
+                  start_date: selectedStart,
+                  end_date: selectedEnd,
                   note: note.trim() || undefined,
                 })
                 .then(() => {
                   setNote('');
-                  setMonth(startDate.trim().slice(0, 7) || month);
+                  clearSelection();
+                  setMonth(selectedStart.slice(0, 7));
                 })
                 .catch((e) =>
                   setFormError(e instanceof Error ? e.message : 'create failed'),
                 );
             }}
           >
-            <Text style={styles.buttonText}>Enregistrer</Text>
+            <Text style={styles.buttonText}>
+              {selectedStart && selectedEnd
+                ? `Enregistrer ${formatDay(selectedStart)} → ${formatDay(selectedEnd)}`
+                : 'Choisis début et fin'}
+            </Text>
           </Pressable>
           {formError ? <Text style={styles.err}>{formError}</Text> : null}
         </>
@@ -269,6 +343,12 @@ const styles = StyleSheet.create({
     fontSize: 28,
     paddingHorizontal: 12,
   },
+  hintCentered: {
+    marginTop: 10,
+    textAlign: 'center',
+    opacity: 0.65,
+    fontSize: 13,
+  },
   weekHeader: {
     marginTop: 12,
     flexDirection: 'row',
@@ -292,6 +372,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   dayLabel: {
+    fontSize: 13,
+  },
+  clearBtn: {
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  clearText: {
+    opacity: 0.65,
     fontSize: 13,
   },
   section: {
@@ -335,6 +423,7 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontWeight: '600',
+    textAlign: 'center',
   },
   err: {
     marginTop: 16,
