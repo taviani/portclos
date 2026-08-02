@@ -1,19 +1,20 @@
-const tintColorLight = '#1a1612';
-const tintColorDark = '#f2efe9';
+/** Fallback for Themed helpers — Paper theme is the source of truth for product UI. */
+const tintColorLight = '#0E7C7B';
+const tintColorDark = '#7DD3D1';
 
 export default {
   light: {
-    text: '#1a1612',
-    background: '#faf9f7',
+    text: '#1B1B1F',
+    background: '#F7F9F9',
     tint: tintColorLight,
-    tabIconDefault: '#b0aaa2',
+    tabIconDefault: '#8A9291',
     tabIconSelected: tintColorLight,
   },
   dark: {
-    text: '#f2efe9',
-    background: '#0c0b0a',
+    text: '#E4E8E8',
+    background: '#101414',
     tint: tintColorDark,
-    tabIconDefault: '#6b6560',
+    tabIconDefault: '#6B7473',
     tabIconSelected: tintColorDark,
   },
 };

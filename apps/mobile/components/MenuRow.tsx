@@ -1,69 +1,40 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { List } from 'react-native-paper';
 
-import { Text, View, useThemeColor } from '@/components/Themed';
-import { Brand } from '@/constants/Brand';
+import { useAppTheme } from '@/theme/paper';
 
 type Props = {
   title: string;
   subtitle?: string;
+  icon: string;
   onPress: () => void;
 };
 
-export function MenuRow({ title, subtitle, onPress }: Props) {
-  const surface = useThemeColor(
-    { light: Brand.surface, dark: '#1c1c1e' },
-    'background',
-  );
-  const pressedBg = useThemeColor(
-    { light: Brand.surfacePressed, dark: '#2c2c2e' },
-    'background',
-  );
-  const chevron = useThemeColor({ light: Brand.inkMuted, dark: '#8e8e93' }, 'text');
+export function MenuRow({ title, subtitle, icon, onPress }: Props) {
+  const theme = useAppTheme();
 
   return (
-    <Pressable
+    <List.Item
+      title={title}
+      description={subtitle}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.row,
-        { backgroundColor: pressed ? pressedBg : surface },
-      ]}
-    >
-      <View style={styles.copy}>
-        <Text style={styles.title}>{title}</Text>
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-      </View>
-      <Text style={[styles.chevron, { color: chevron }]}>›</Text>
-    </Pressable>
+      left={(props) => <List.Icon {...props} icon={icon} color={theme.colors.primary} />}
+      right={(props) => <List.Icon {...props} icon="chevron-right" />}
+      style={{
+        backgroundColor: theme.colors.elevation.level1,
+        borderRadius: theme.roundness,
+        marginBottom: 10,
+        paddingVertical: 6,
+      }}
+      titleStyle={{
+        fontWeight: '700',
+        fontSize: 17,
+        color: theme.colors.onSurface,
+      }}
+      descriptionStyle={{
+        color: theme.colors.onSurfaceVariant,
+        marginTop: 2,
+      }}
+      descriptionNumberOfLines={2}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    marginBottom: 10,
-  },
-  copy: {
-    flex: 1,
-    gap: 4,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    letterSpacing: -0.2,
-  },
-  subtitle: {
-    fontSize: 14,
-    opacity: 0.55,
-    lineHeight: 20,
-  },
-  chevron: {
-    fontSize: 26,
-    fontWeight: '300',
-    marginLeft: 12,
-    marginTop: -2,
-  },
-});

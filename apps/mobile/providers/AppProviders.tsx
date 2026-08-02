@@ -3,11 +3,14 @@ import type { ReactNode } from 'react';
 
 import { queryClient } from '@/lib/queryClient';
 import { SessionProvider } from '@/providers/SessionProvider';
+import { PortclosPaperProvider } from '@/theme/paper';
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <SessionProvider>{children}</SessionProvider>
+      <PortclosPaperProvider>
+        <SessionProvider>{children}</SessionProvider>
+      </PortclosPaperProvider>
     </QueryClientProvider>
   );
 }

@@ -1,20 +1,18 @@
 import { useState } from 'react';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
+  Button,
+  Chip,
+  IconButton,
   Switch,
+  Text,
   TextInput,
-  View as RNView,
-} from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+  Surface,
+} from 'react-native-paper';
 
 import { AuthedImage } from '@/components/AuthedImage';
-import { PrimaryButton } from '@/components/PrimaryButton';
-import { Text, View, useThemeColor } from '@/components/Themed';
-import { Brand } from '@/constants/Brand';
 import {
   useChecklistItems,
   useCreateChecklistItem,
@@ -25,14 +23,10 @@ import {
 } from '@/hooks/useClosing';
 import { useCurrentHouse } from '@/hooks/useHouses';
 import { checklistPhotoUrl } from '@/lib/api';
+import { useAppTheme } from '@/theme/paper';
 
 export default function FermetureModeleScreen() {
-  const inputColor = useThemeColor({}, 'text');
-  const inputBorder = useThemeColor({ light: Brand.line, dark: '#555' }, 'text');
-  const inputBg = useThemeColor({ light: Brand.white, dark: '#1c1c1e' }, 'background');
-  const placeholderColor = useThemeColor({ light: Brand.inkMuted, dark: '#8e8e93' }, 'text');
-  const surface = useThemeColor({ light: Brand.surface, dark: '#1c1c1e' }, 'background');
-
+  const theme = useAppTheme();
   const { house, isLoading } = useCurrentHouse();
   const items = useChecklistItems(house?.id);
   const createItem = useCreateChecklistItem(house?.id);
@@ -107,35 +101,56 @@ export default function FermetureModeleScreen() {
 
   if (isLoading || items.isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={Brand.ink} />
+      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator animating color={theme.colors.primary} />
       </View>
     );
   }
 
   if (!house) {
     return (
-      <View style={styles.pad}>
-        <Text style={styles.hint}>Aucune maison sélectionnée.</Text>
+      <View style={[styles.pad, { backgroundColor: theme.colors.background }]}>
+        <Text style={{ color: theme.colors.onSurfaceVariant }}>Aucune maison sélectionnée.</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.pad}>
-      <Text style={styles.heading}>Modèle</Text>
-      <Text style={styles.lead}>
+    <ScrollView
+      style={{ backgroundColor: theme.colors.background }}
+      contentContainerStyle={styles.pad}
+    >
+      <Text
+        variant="headlineMedium"
+        style={{ color: theme.colors.onBackground, fontWeight: '800', letterSpacing: -0.4 }}
+      >
+        Modèle
+      </Text>
+      <Text
+        variant="bodyLarge"
+        style={{ color: theme.colors.onSurfaceVariant, marginTop: 8, marginBottom: 18, lineHeight: 24 }}
+      >
         Copié à chaque fermeture. Ajoute une photo pour indiquer où agir.
       </Text>
 
       {(items.data ?? []).map((it) => (
-        <View key={it.id} style={[styles.item, { backgroundColor: surface }]}>
+        <Surface
+          key={it.id}
+          style={[styles.item, { backgroundColor: theme.colors.elevation.level1 }]}
+          elevation={0}
+        >
           <View style={styles.itemTop}>
-            <View style={styles.itemCopy}>
-              <Text style={styles.itemTitle}>{it.label}</Text>
-              <Text style={styles.meta}>{it.optional ? 'Optionnelle' : 'Requise'}</Text>
+            <View style={{ flex: 1 }}>
+              <Text variant="titleMedium" style={{ fontWeight: '700', color: theme.colors.onSurface }}>
+                {it.label}
+              </Text>
+              <Chip compact style={{ alignSelf: 'flex-start', marginTop: 8 }}>
+                {it.optional ? 'Optionnelle' : 'Requise'}
+              </Chip>
             </View>
-            <Pressable
+            <IconButton
+              icon="delete-outline"
+              iconColor={theme.colors.error}
               onPress={() => {
                 Alert.alert('Supprimer cette tâche ?', it.label, [
                   { text: 'Annuler', style: 'cancel' },
@@ -150,34 +165,35 @@ export default function FermetureModeleScreen() {
                   },
                 ]);
               }}
-              hitSlop={10}
-            >
-              <Text style={styles.delete}>Suppr.</Text>
-            </Pressable>
+            />
           </View>
 
           {it.photos?.length ? (
             <ScrollView horizontal style={styles.photos} showsHorizontalScrollIndicator={false}>
               {it.photos.map((p) => (
-                <RNView key={p.id} style={styles.photoWrap}>
+                <View key={p.id} style={styles.photoWrap}>
                   <AuthedImage
                     url={checklistPhotoUrl(p.id)}
                     cacheKey={p.id}
                     style={styles.photo}
                   />
-                  <Pressable
-                    onPress={() => void deletePhoto.mutateAsync(p.id)}
+                  <IconButton
+                    icon="close"
+                    size={16}
                     style={styles.photoDel}
-                  >
-                    <Text style={styles.photoDelText}>×</Text>
-                  </Pressable>
-                </RNView>
+                    containerColor={theme.colors.scrim}
+                    iconColor={theme.colors.onPrimary}
+                    onPress={() => void deletePhoto.mutateAsync(p.id)}
+                  />
+                </View>
               ))}
             </ScrollView>
           ) : null}
 
-          <View style={styles.itemActions}>
-            <Pressable
+          <View style={styles.actions}>
+            <Button
+              mode="text"
+              compact
               onPress={() => {
                 void updateItem.mutateAsync({
                   itemId: it.id,
@@ -186,39 +202,42 @@ export default function FermetureModeleScreen() {
                 });
               }}
             >
-              <Text style={styles.link}>
-                {it.optional ? 'Rendre requise' : 'Optionnelle'}
-              </Text>
-            </Pressable>
-            <Pressable onPress={() => pickHintPhoto(it.id)}>
-              <Text style={styles.link}>+ Indication</Text>
-            </Pressable>
+              {it.optional ? 'Rendre requise' : 'Optionnelle'}
+            </Button>
+            <Button mode="text" compact icon="image-plus" onPress={() => pickHintPhoto(it.id)}>
+              Indication
+            </Button>
           </View>
-        </View>
+        </Surface>
       ))}
 
-      <View style={[styles.addBlock, { backgroundColor: surface }]}>
-        <Text style={styles.addTitle}>Nouvelle tâche</Text>
+      <Surface
+        style={[styles.addBlock, { backgroundColor: theme.colors.primaryContainer }]}
+        elevation={0}
+      >
+        <Text
+          variant="titleMedium"
+          style={{ fontWeight: '700', color: theme.colors.onPrimaryContainer, marginBottom: 12 }}
+        >
+          Nouvelle tâche
+        </Text>
         <TextInput
-          style={[
-            styles.input,
-            { color: inputColor, borderColor: inputBorder, backgroundColor: inputBg },
-          ]}
+          mode="outlined"
+          label="Libellé"
           placeholder="Ex. Fermer le portail"
-          placeholderTextColor={placeholderColor}
           value={label}
           onChangeText={setLabel}
+          style={{ backgroundColor: theme.colors.surface }}
         />
         <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Optionnelle</Text>
-          <Switch
-            value={optional}
-            onValueChange={setOptional}
-            trackColor={{ true: Brand.ink }}
-          />
+          <Text style={{ color: theme.colors.onPrimaryContainer }}>Optionnelle</Text>
+          <Switch value={optional} onValueChange={setOptional} color={theme.colors.primary} />
         </View>
-        <PrimaryButton
-          label="Ajouter"
+        <Button
+          mode="contained"
+          icon="plus"
+          disabled={!label.trim()}
+          loading={createItem.isPending}
           onPress={() => {
             setError(null);
             void createItem
@@ -229,144 +248,36 @@ export default function FermetureModeleScreen() {
               })
               .catch((e) => setError(e instanceof Error ? e.message : 'création impossible'));
           }}
-          disabled={!label.trim()}
-          busy={createItem.isPending}
-          style={styles.addBtn}
-        />
-      </View>
-      {error ? <Text style={styles.err}>{error}</Text> : null}
+          style={{ marginTop: 16, borderRadius: 14 }}
+          contentStyle={{ minHeight: 48 }}
+          buttonColor={theme.colors.primary}
+          textColor={theme.colors.onPrimary}
+        >
+          Ajouter
+        </Button>
+      </Surface>
+      {error ? (
+        <Text style={{ color: theme.colors.error, marginTop: 12 }}>{error}</Text>
+      ) : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  pad: {
-    paddingHorizontal: 18,
-    paddingTop: 8,
-    paddingBottom: 48,
-  },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heading: {
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.6,
-  },
-  lead: {
-    marginTop: 8,
-    marginBottom: 20,
-    fontSize: 16,
-    lineHeight: 23,
-    opacity: 0.62,
-  },
-  item: {
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 10,
-  },
-  itemTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  itemCopy: {
-    flex: 1,
-  },
-  itemTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    letterSpacing: -0.2,
-  },
-  meta: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-    opacity: 0.45,
-  },
-  photos: {
-    marginTop: 12,
-  },
-  photoWrap: {
-    marginRight: 10,
-    position: 'relative',
-  },
-  photo: {
-    width: 88,
-    height: 88,
-    borderRadius: 12,
-  },
-  photoDel: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: 'rgba(26,22,18,0.7)',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoDelText: {
-    color: Brand.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  itemActions: {
-    marginTop: 14,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 18,
-  },
-  link: {
-    fontSize: 14,
-    fontWeight: '600',
-    opacity: 0.7,
-  },
-  delete: {
-    color: Brand.danger,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  addBlock: {
-    marginTop: 18,
-    borderRadius: 18,
-    padding: 16,
-  },
-  addTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
+  pad: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 48 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  item: { borderRadius: 18, padding: 12, marginBottom: 10 },
+  itemTop: { flexDirection: 'row', alignItems: 'flex-start' },
+  photos: { marginTop: 10 },
+  photoWrap: { marginRight: 10, position: 'relative' },
+  photo: { width: 92, height: 92, borderRadius: 14 },
+  photoDel: { position: 'absolute', top: -4, right: -4, margin: 0 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
+  addBlock: { marginTop: 14, borderRadius: 20, padding: 16 },
   switchRow: {
-    marginTop: 16,
+    marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  switchLabel: {
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  addBtn: {
-    marginTop: 18,
-  },
-  hint: {
-    opacity: 0.55,
-  },
-  err: {
-    marginTop: 12,
-    color: Brand.danger,
   },
 });
