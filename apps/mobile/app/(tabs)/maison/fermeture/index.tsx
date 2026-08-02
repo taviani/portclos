@@ -1,11 +1,26 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 
-import { Text, View } from '@/components/Themed';
+import { PrimaryButton } from '@/components/PrimaryButton';
+import { Text, View, useThemeColor } from '@/components/Themed';
+import { Brand } from '@/constants/Brand';
 import { useClosings, useStartClosing } from '@/hooks/useClosing';
 import { useCurrentHouse } from '@/hooks/useHouses';
 
+function formatWhen(iso: string): string {
+  return new Date(iso).toLocaleString('fr-FR', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function FermetureHomeScreen() {
+  const surface = useThemeColor({ light: Brand.surface, dark: '#1c1c1e' }, 'background');
+  const line = useThemeColor({ light: Brand.line, dark: '#333' }, 'text');
+
   const { house, isLoading } = useCurrentHouse();
   const closings = useClosings(house?.id);
   const start = useStartClosing(house?.id);
@@ -13,7 +28,7 @@ export default function FermetureHomeScreen() {
   if (isLoading || closings.isLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator color={Brand.ink} />
       </View>
     );
   }
@@ -29,51 +44,63 @@ export default function FermetureHomeScreen() {
   const open = (closings.data ?? []).find((c) => c.status === 'open');
   const recent = (closings.data ?? []).filter((c) => c.status === 'completed').slice(0, 8);
 
+  const beginOrResume = () => {
+    if (open) {
+      router.push(`/(tabs)/maison/fermeture/${open.id}`);
+      return;
+    }
+    void start
+      .mutateAsync()
+      .then((detail) => router.push(`/(tabs)/maison/fermeture/${detail.id}`))
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : '';
+        if (msg.includes('closing_already_open') || msg.includes('409')) {
+          void closings.refetch().then((res) => {
+            const again = res.data?.find((c) => c.status === 'open');
+            if (again) router.push(`/(tabs)/maison/fermeture/${again.id}`);
+          });
+        }
+      });
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.heading}>Avant de partir</Text>
       <Text style={styles.lead}>
-        Checklist de départ : tâches requises et optionnelles. Les photos du modèle servent
-        d’indication (où agir), pas de preuve.
+        Passe la checklist. Les photos du modèle montrent où agir.
       </Text>
 
-      {open ? (
-        <Pressable
-          style={styles.button}
-          onPress={() => router.push(`/(tabs)/maison/fermeture/${open.id}`)}
-        >
-          <Text style={styles.buttonText}>Reprendre la fermeture en cours</Text>
-        </Pressable>
-      ) : (
-        <Pressable
-          style={[styles.button, start.isPending && styles.disabled]}
-          disabled={start.isPending}
-          onPress={() => {
-            void start
-              .mutateAsync()
-              .then((detail) => router.push(`/(tabs)/maison/fermeture/${detail.id}`))
-              .catch((e) => {
-                const msg = e instanceof Error ? e.message : '';
-                if (msg.includes('closing_already_open') || msg.includes('409')) {
-                  void closings.refetch().then((res) => {
-                    const again = res.data?.find((c) => c.status === 'open');
-                    if (again) router.push(`/(tabs)/maison/fermeture/${again.id}`);
-                  });
-                }
-              });
-          }}
-        >
-          <Text style={styles.buttonText}>
-            {start.isPending ? '…' : 'Commencer une fermeture'}
-          </Text>
-        </Pressable>
-      )}
+      <View style={[styles.hero, { backgroundColor: surface }]}>
+        {open ? (
+          <>
+            <Text style={styles.heroLabel}>Fermeture en cours</Text>
+            <Text style={styles.heroMeta}>Commencée {formatWhen(open.started_at)}</Text>
+            <PrimaryButton
+              label="Reprendre"
+              onPress={beginOrResume}
+              style={styles.heroBtn}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.heroLabel}>Prêt à fermer ?</Text>
+            <Text style={styles.heroMeta}>Une checklist claire, étape par étape.</Text>
+            <PrimaryButton
+              label="Commencer"
+              onPress={beginOrResume}
+              busy={start.isPending}
+              style={styles.heroBtn}
+            />
+          </>
+        )}
+      </View>
 
-      <Pressable
-        style={styles.secondary}
+      <PrimaryButton
+        variant="ghost"
+        label="Modifier le modèle"
         onPress={() => router.push('/(tabs)/maison/fermeture/modele')}
-      >
-        <Text style={styles.secondaryText}>Modifier le modèle de checklist</Text>
-      </Pressable>
+        style={styles.modelBtn}
+      />
 
       {start.error ? (
         <Text style={styles.err}>
@@ -81,22 +108,23 @@ export default function FermetureHomeScreen() {
         </Text>
       ) : null}
 
-      <Text style={styles.section}>Fermetures récentes</Text>
+      <Text style={styles.section}>Récentes</Text>
       {recent.length === 0 ? (
-        <Text style={styles.hint}>Aucune fermeture terminée pour l’instant.</Text>
+        <Text style={styles.hint}>Pas encore de fermeture terminée.</Text>
       ) : (
         recent.map((c) => (
           <Pressable
             key={c.id}
-            style={styles.row}
             onPress={() => router.push(`/(tabs)/maison/fermeture/${c.id}`)}
+            style={({ pressed }) => [
+              styles.row,
+              { borderBottomColor: line, opacity: pressed ? 0.6 : 1 },
+            ]}
           >
-            <Text>
-              {new Date(c.completed_at ?? c.started_at).toLocaleString('fr-FR', {
-                dateStyle: 'medium',
-                timeStyle: 'short',
-              })}
-            </Text>
+            <View>
+              <Text style={styles.rowTitle}>Terminée</Text>
+              <Text style={styles.rowMeta}>{formatWhen(c.completed_at ?? c.started_at)}</Text>
+            </View>
             <Text style={styles.chevron}>›</Text>
           </Pressable>
         ))
@@ -107,8 +135,8 @@ export default function FermetureHomeScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingHorizontal: 22,
+    paddingTop: 8,
     paddingBottom: 48,
   },
   center: {
@@ -116,58 +144,78 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heading: {
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.6,
+  },
   lead: {
-    opacity: 0.7,
-    lineHeight: 22,
-    marginBottom: 20,
+    marginTop: 8,
+    marginBottom: 22,
+    fontSize: 16,
+    lineHeight: 23,
+    opacity: 0.62,
   },
-  button: {
-    backgroundColor: '#1a1612',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
+  hero: {
+    borderRadius: 20,
+    padding: 20,
   },
-  disabled: {
-    opacity: 0.45,
+  heroLabel: {
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-    textAlign: 'center',
+  heroMeta: {
+    marginTop: 6,
+    fontSize: 14,
+    opacity: 0.55,
+    lineHeight: 20,
   },
-  secondary: {
-    marginTop: 16,
+  heroBtn: {
+    marginTop: 18,
   },
-  secondaryText: {
-    opacity: 0.7,
+  modelBtn: {
+    marginTop: 12,
   },
   section: {
-    marginTop: 32,
-    marginBottom: 8,
-    fontWeight: '600',
+    marginTop: 36,
+    marginBottom: 4,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    opacity: 0.45,
   },
   hint: {
-    opacity: 0.55,
-    fontSize: 13,
+    marginTop: 10,
+    opacity: 0.5,
+    fontSize: 14,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ccc',
+  },
+  rowTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  rowMeta: {
+    marginTop: 3,
+    fontSize: 13,
+    opacity: 0.5,
   },
   chevron: {
-    opacity: 0.35,
-    fontSize: 20,
+    opacity: 0.3,
+    fontSize: 22,
   },
   sub: {
     opacity: 0.7,
   },
   err: {
     marginTop: 12,
-    color: '#9b1c1c',
+    color: Brand.danger,
   },
 });

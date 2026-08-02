@@ -12,7 +12,9 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 
 import { AuthedImage } from '@/components/AuthedImage';
+import { PrimaryButton } from '@/components/PrimaryButton';
 import { Text, View, useThemeColor } from '@/components/Themed';
+import { Brand } from '@/constants/Brand';
 import {
   useChecklistItems,
   useCreateChecklistItem,
@@ -26,9 +28,10 @@ import { checklistPhotoUrl } from '@/lib/api';
 
 export default function FermetureModeleScreen() {
   const inputColor = useThemeColor({}, 'text');
-  const inputBorder = useThemeColor({ light: '#ccc', dark: '#555' }, 'text');
-  const inputBg = useThemeColor({ light: '#fff', dark: '#1c1c1e' }, 'background');
-  const placeholderColor = useThemeColor({ light: '#888', dark: '#8e8e93' }, 'text');
+  const inputBorder = useThemeColor({ light: Brand.line, dark: '#555' }, 'text');
+  const inputBg = useThemeColor({ light: Brand.white, dark: '#1c1c1e' }, 'background');
+  const placeholderColor = useThemeColor({ light: Brand.inkMuted, dark: '#8e8e93' }, 'text');
+  const surface = useThemeColor({ light: Brand.surface, dark: '#1c1c1e' }, 'background');
 
   const { house, isLoading } = useCurrentHouse();
   const items = useChecklistItems(house?.id);
@@ -59,7 +62,7 @@ export default function FermetureModeleScreen() {
 
   const pickHintPhoto = (itemId: string) => {
     setError(null);
-    Alert.alert('Photo d’indication', 'Montre où / comment faire la tâche.', [
+    Alert.alert('Photo d’indication', 'Montre où ou comment faire la tâche.', [
       {
         text: 'Photothèque',
         onPress: () => {
@@ -105,7 +108,7 @@ export default function FermetureModeleScreen() {
   if (isLoading || items.isLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator color={Brand.ink} />
       </View>
     );
   }
@@ -120,15 +123,38 @@ export default function FermetureModeleScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.pad}>
+      <Text style={styles.heading}>Modèle</Text>
       <Text style={styles.lead}>
-        Ces tâches sont copiées à chaque fermeture. Ajoute des photos d’indication pour montrer
-        où agir (compteur, vanne, etc.).
+        Copié à chaque fermeture. Ajoute une photo pour indiquer où agir.
       </Text>
 
       {(items.data ?? []).map((it) => (
-        <View key={it.id} style={styles.item}>
-          <Text style={styles.itemTitle}>{it.label}</Text>
-          <Text style={styles.meta}>{it.optional ? 'Optionnelle' : 'Requise'}</Text>
+        <View key={it.id} style={[styles.item, { backgroundColor: surface }]}>
+          <View style={styles.itemTop}>
+            <View style={styles.itemCopy}>
+              <Text style={styles.itemTitle}>{it.label}</Text>
+              <Text style={styles.meta}>{it.optional ? 'Optionnelle' : 'Requise'}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                Alert.alert('Supprimer cette tâche ?', it.label, [
+                  { text: 'Annuler', style: 'cancel' },
+                  {
+                    text: 'Supprimer',
+                    style: 'destructive',
+                    onPress: () => {
+                      void deleteItem.mutateAsync(it.id).catch((e) =>
+                        setError(e instanceof Error ? e.message : 'suppression impossible'),
+                      );
+                    },
+                  },
+                ]);
+              }}
+              hitSlop={10}
+            >
+              <Text style={styles.delete}>Suppr.</Text>
+            </Pressable>
+          </View>
 
           {it.photos?.length ? (
             <ScrollView horizontal style={styles.photos} showsHorizontalScrollIndicator={false}>
@@ -161,56 +187,53 @@ export default function FermetureModeleScreen() {
               }}
             >
               <Text style={styles.link}>
-                {it.optional ? 'Rendre requise' : 'Rendre optionnelle'}
+                {it.optional ? 'Rendre requise' : 'Optionnelle'}
               </Text>
             </Pressable>
-            <Pressable onPress={() => void pickHintPhoto(it.id)}>
-              <Text style={styles.link}>Photo d’indication</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                void deleteItem.mutateAsync(it.id).catch((e) =>
-                  setError(e instanceof Error ? e.message : 'suppression impossible'),
-                );
-              }}
-            >
-              <Text style={styles.delete}>Suppr.</Text>
+            <Pressable onPress={() => pickHintPhoto(it.id)}>
+              <Text style={styles.link}>+ Indication</Text>
             </Pressable>
           </View>
         </View>
       ))}
 
-      <Text style={styles.section}>Ajouter une tâche</Text>
-      <TextInput
-        style={[
-          styles.input,
-          { color: inputColor, borderColor: inputBorder, backgroundColor: inputBg },
-        ]}
-        placeholder="Libellé"
-        placeholderTextColor={placeholderColor}
-        value={label}
-        onChangeText={setLabel}
-      />
-      <View style={styles.switchRow}>
-        <Text>Optionnelle</Text>
-        <Switch value={optional} onValueChange={setOptional} />
+      <View style={[styles.addBlock, { backgroundColor: surface }]}>
+        <Text style={styles.addTitle}>Nouvelle tâche</Text>
+        <TextInput
+          style={[
+            styles.input,
+            { color: inputColor, borderColor: inputBorder, backgroundColor: inputBg },
+          ]}
+          placeholder="Ex. Fermer le portail"
+          placeholderTextColor={placeholderColor}
+          value={label}
+          onChangeText={setLabel}
+        />
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Optionnelle</Text>
+          <Switch
+            value={optional}
+            onValueChange={setOptional}
+            trackColor={{ true: Brand.ink }}
+          />
+        </View>
+        <PrimaryButton
+          label="Ajouter"
+          onPress={() => {
+            setError(null);
+            void createItem
+              .mutateAsync({ label: label.trim(), optional })
+              .then(() => {
+                setLabel('');
+                setOptional(false);
+              })
+              .catch((e) => setError(e instanceof Error ? e.message : 'création impossible'));
+          }}
+          disabled={!label.trim()}
+          busy={createItem.isPending}
+          style={styles.addBtn}
+        />
       </View>
-      <Pressable
-        style={[styles.button, (!label.trim() || createItem.isPending) && styles.disabled]}
-        disabled={!label.trim() || createItem.isPending}
-        onPress={() => {
-          setError(null);
-          void createItem
-            .mutateAsync({ label: label.trim(), optional })
-            .then(() => {
-              setLabel('');
-              setOptional(false);
-            })
-            .catch((e) => setError(e instanceof Error ? e.message : 'création impossible'));
-        }}
-      >
-        <Text style={styles.buttonText}>Ajouter</Text>
-      </Pressable>
       {error ? <Text style={styles.err}>{error}</Text> : null}
     </ScrollView>
   );
@@ -218,8 +241,8 @@ export default function FermetureModeleScreen() {
 
 const styles = StyleSheet.create({
   pad: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingHorizontal: 18,
+    paddingTop: 8,
     paddingBottom: 48,
   },
   center: {
@@ -227,104 +250,123 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heading: {
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.6,
+  },
   lead: {
-    opacity: 0.7,
-    lineHeight: 22,
+    marginTop: 8,
     marginBottom: 20,
+    fontSize: 16,
+    lineHeight: 23,
+    opacity: 0.62,
   },
   item: {
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ccc',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 10,
+  },
+  itemTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  itemCopy: {
+    flex: 1,
   },
   itemTitle: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
   meta: {
     marginTop: 4,
-    fontSize: 13,
-    opacity: 0.55,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    opacity: 0.45,
   },
   photos: {
-    marginTop: 10,
+    marginTop: 12,
   },
   photoWrap: {
     marginRight: 10,
     position: 'relative',
   },
   photo: {
-    width: 84,
-    height: 84,
-    borderRadius: 8,
+    width: 88,
+    height: 88,
+    borderRadius: 12,
   },
   photoDel: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(26,22,18,0.7)',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   photoDelText: {
-    color: '#fff',
+    color: Brand.white,
     fontSize: 14,
     fontWeight: '700',
   },
   itemActions: {
-    marginTop: 10,
+    marginTop: 14,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 14,
+    gap: 18,
   },
   link: {
+    fontSize: 14,
+    fontWeight: '600',
     opacity: 0.7,
-    fontSize: 13,
   },
   delete: {
-    color: '#9b1c1c',
+    color: Brand.danger,
     fontSize: 13,
-  },
-  section: {
-    marginTop: 28,
-    marginBottom: 8,
     fontWeight: '600',
+  },
+  addBlock: {
+    marginTop: 18,
+    borderRadius: 18,
+    padding: 16,
+  },
+  addTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 12,
   },
   input: {
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
   },
   switchRow: {
-    marginTop: 14,
+    marginTop: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  button: {
-    marginTop: 20,
-    backgroundColor: '#1a1612',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
+  switchLabel: {
+    fontSize: 15,
+    fontWeight: '500',
   },
-  disabled: {
-    opacity: 0.45,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
+  addBtn: {
+    marginTop: 18,
   },
   hint: {
     opacity: 0.55,
   },
   err: {
     marginTop: 12,
-    color: '#9b1c1c',
+    color: Brand.danger,
   },
 });
