@@ -39,9 +39,8 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		var body struct {
-			Label         string `json:"label"`
-			Optional      bool   `json:"optional"`
-			RequiresPhoto bool   `json:"requires_photo"`
+			Label    string `json:"label"`
+			Optional bool   `json:"optional"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
@@ -57,7 +56,7 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
-		it, err := db.CreateChecklistItem(r.Context(), houseID, label, body.Optional, body.RequiresPhoto, order)
+		it, err := db.CreateChecklistItem(r.Context(), houseID, label, body.Optional, order)
 		if err != nil {
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
@@ -82,9 +81,8 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		var body struct {
-			Label         string `json:"label"`
-			Optional      bool   `json:"optional"`
-			RequiresPhoto bool   `json:"requires_photo"`
+			Label    string `json:"label"`
+			Optional bool   `json:"optional"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
@@ -95,7 +93,7 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			http.Error(w, `{"error":"label_required"}`, http.StatusBadRequest)
 			return
 		}
-		it, err := db.UpdateChecklistItem(r.Context(), itemID, houseID, label, body.Optional, body.RequiresPhoto)
+		it, err := db.UpdateChecklistItem(r.Context(), itemID, houseID, label, body.Optional)
 		if err != nil {
 			writeStoreErr(w, err)
 			return
@@ -124,6 +122,69 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+
+	pr.Post("/closing-checklist/items/{itemId}/photos", func(w http.ResponseWriter, r *http.Request) {
+		user, ok := auth.UserFromContext(r.Context())
+		if !ok {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		itemID := chi.URLParam(r, "itemId")
+		houseID, err := db.GetChecklistItemHouseID(r.Context(), itemID)
+		if err != nil {
+			writeStoreErr(w, err)
+			return
+		}
+		if _, err := db.GetHouseForMember(r.Context(), houseID, user.Subject); err != nil {
+			writeStoreErr(w, err)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, maxPhotoBytes+1024)
+		if err := r.ParseMultipartForm(maxPhotoBytes); err != nil {
+			http.Error(w, `{"error":"invalid_multipart"}`, http.StatusBadRequest)
+			return
+		}
+		file, header, err := r.FormFile("photo")
+		if err != nil {
+			http.Error(w, `{"error":"photo_required"}`, http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		contentType := header.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		if !strings.HasPrefix(contentType, "image/") {
+			http.Error(w, `{"error":"invalid_content_type"}`, http.StatusBadRequest)
+			return
+		}
+
+		buf, err := io.ReadAll(io.LimitReader(file, maxPhotoBytes+1))
+		if err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		if len(buf) > maxPhotoBytes {
+			http.Error(w, `{"error":"photo_too_large"}`, http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		photoID := uuid.NewString()
+		key := "checklist/" + photoID + media.ExtForContentType(contentType)
+		if err := files.Save(key, bytes.NewReader(buf)); err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		p, err := db.AddChecklistItemPhoto(r.Context(), itemID, user.Subject, key, contentType)
+		if err != nil {
+			_ = files.Remove(key)
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusCreated, p)
 	})
 
 	pr.Get("/houses/{id}/closings", func(w http.ResponseWriter, r *http.Request) {
@@ -202,69 +263,6 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		writeJSON(w, http.StatusOK, detail)
-	})
-
-	pr.Post("/closings/{closingId}/items/{itemId}/photos", func(w http.ResponseWriter, r *http.Request) {
-		user, ok := requireClosingMember(w, r, db)
-		if !ok {
-			return
-		}
-		closingID := chi.URLParam(r, "closingId")
-		itemID := chi.URLParam(r, "itemId")
-		_, status, err := db.GetClosingItemMeta(r.Context(), closingID, itemID)
-		if err != nil {
-			writeStoreErr(w, err)
-			return
-		}
-		if status != "open" {
-			http.Error(w, `{"error":"closing_not_open"}`, http.StatusConflict)
-			return
-		}
-
-		r.Body = http.MaxBytesReader(w, r.Body, maxPhotoBytes+1024)
-		if err := r.ParseMultipartForm(maxPhotoBytes); err != nil {
-			http.Error(w, `{"error":"invalid_multipart"}`, http.StatusBadRequest)
-			return
-		}
-		file, header, err := r.FormFile("photo")
-		if err != nil {
-			http.Error(w, `{"error":"photo_required"}`, http.StatusBadRequest)
-			return
-		}
-		defer file.Close()
-
-		contentType := header.Header.Get("Content-Type")
-		if contentType == "" {
-			contentType = "application/octet-stream"
-		}
-		if !strings.HasPrefix(contentType, "image/") {
-			http.Error(w, `{"error":"invalid_content_type"}`, http.StatusBadRequest)
-			return
-		}
-
-		buf, err := io.ReadAll(io.LimitReader(file, maxPhotoBytes+1))
-		if err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
-			return
-		}
-		if len(buf) > maxPhotoBytes {
-			http.Error(w, `{"error":"photo_too_large"}`, http.StatusRequestEntityTooLarge)
-			return
-		}
-
-		photoID := uuid.NewString()
-		key := "closings/" + photoID + media.ExtForContentType(contentType)
-		if err := files.Save(key, bytes.NewReader(buf)); err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
-			return
-		}
-		p, err := db.AddClosingItemPhoto(r.Context(), closingID, itemID, user.Subject, key, contentType)
-		if err != nil {
-			_ = files.Remove(key)
-			writeClosingItemErr(w, err)
-			return
-		}
-		writeJSON(w, http.StatusCreated, p)
 	})
 
 	pr.Get("/closing-photos/{photoId}", func(w http.ResponseWriter, r *http.Request) {
@@ -368,8 +366,6 @@ func writeClosingItemErr(w http.ResponseWriter, err error) {
 		http.Error(w, `{"error":"closing_not_open"}`, http.StatusConflict)
 	case errors.Is(err, store.ErrSkipRequired):
 		http.Error(w, `{"error":"cannot_skip_required"}`, http.StatusBadRequest)
-	case errors.Is(err, store.ErrPhotoRequired):
-		http.Error(w, `{"error":"photo_required"}`, http.StatusBadRequest)
 	case errors.Is(err, store.ErrRequiredPending):
 		http.Error(w, `{"error":"required_pending"}`, http.StatusBadRequest)
 	case err != nil && err.Error() == "invalid status":

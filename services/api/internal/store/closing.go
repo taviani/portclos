@@ -15,17 +15,24 @@ var (
 	ErrClosingNotOpen     = errors.New("closing not open")
 	ErrRequiredPending    = errors.New("required items pending")
 	ErrSkipRequired       = errors.New("cannot skip required item")
-	ErrPhotoRequired      = errors.New("photo required")
 )
 
+type ChecklistItemPhoto struct {
+	ID              string    `json:"id"`
+	ChecklistItemID string    `json:"checklist_item_id"`
+	ContentType     string    `json:"content_type"`
+	CreatedBy       string    `json:"created_by"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
 type ChecklistItem struct {
-	ID            string    `json:"id"`
-	HouseID       string    `json:"house_id"`
-	Label         string    `json:"label"`
-	Optional      bool      `json:"optional"`
-	RequiresPhoto bool      `json:"requires_photo"`
-	SortOrder     int       `json:"sort_order"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID        string               `json:"id"`
+	HouseID   string               `json:"house_id"`
+	Label     string               `json:"label"`
+	Optional  bool                 `json:"optional"`
+	SortOrder int                  `json:"sort_order"`
+	CreatedAt time.Time            `json:"created_at"`
+	Photos    []ChecklistItemPhoto `json:"photos"`
 }
 
 type Closing struct {
@@ -37,24 +44,15 @@ type Closing struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
-type ClosingItemPhoto struct {
-	ID            string    `json:"id"`
-	ClosingItemID string    `json:"closing_item_id"`
-	ContentType   string    `json:"content_type"`
-	CreatedBy     string    `json:"created_by"`
-	CreatedAt     time.Time `json:"created_at"`
-}
-
 type ClosingItem struct {
-	ID            string             `json:"id"`
-	ClosingID     string             `json:"closing_id"`
-	Label         string             `json:"label"`
-	Optional      bool               `json:"optional"`
-	RequiresPhoto bool               `json:"requires_photo"`
-	SortOrder     int                `json:"sort_order"`
-	Status        string             `json:"status"`
-	UpdatedAt     time.Time          `json:"updated_at"`
-	Photos        []ClosingItemPhoto `json:"photos"`
+	ID        string               `json:"id"`
+	ClosingID string               `json:"closing_id"`
+	Label     string               `json:"label"`
+	Optional  bool                 `json:"optional"`
+	SortOrder int                  `json:"sort_order"`
+	Status    string               `json:"status"`
+	UpdatedAt time.Time            `json:"updated_at"`
+	Photos    []ChecklistItemPhoto `json:"photos"`
 }
 
 type ClosingDetail struct {
@@ -71,22 +69,20 @@ type ClosingPhotoFile struct {
 }
 
 func defaultChecklistSeed() []struct {
-	Label         string
-	Optional      bool
-	RequiresPhoto bool
+	Label    string
+	Optional bool
 } {
 	return []struct {
-		Label         string
-		Optional      bool
-		RequiresPhoto bool
+		Label    string
+		Optional bool
 	}{
-		{Label: "Couper l’eau", Optional: false, RequiresPhoto: false},
-		{Label: "Couper le gaz", Optional: false, RequiresPhoto: false},
-		{Label: "Éteindre le chauffe-eau", Optional: true, RequiresPhoto: false},
-		{Label: "Vider le frigo / congélateur", Optional: false, RequiresPhoto: false},
-		{Label: "Fermer volets et fenêtres", Optional: false, RequiresPhoto: false},
-		{Label: "Sortir les poubelles", Optional: true, RequiresPhoto: false},
-		{Label: "Photo du compteur électrique", Optional: false, RequiresPhoto: true},
+		{Label: "Couper l’eau", Optional: false},
+		{Label: "Couper le gaz", Optional: false},
+		{Label: "Éteindre le chauffe-eau", Optional: true},
+		{Label: "Vider le frigo / congélateur", Optional: false},
+		{Label: "Fermer volets et fenêtres", Optional: false},
+		{Label: "Sortir les poubelles", Optional: true},
+		{Label: "Relever le compteur électrique", Optional: false},
 	}
 }
 
@@ -103,6 +99,17 @@ CREATE TABLE IF NOT EXISTS closing_checklist_items (
 );
 CREATE INDEX IF NOT EXISTS closing_checklist_items_house_idx
   ON closing_checklist_items (house_id, sort_order);
+
+CREATE TABLE IF NOT EXISTS closing_checklist_item_photos (
+  id UUID PRIMARY KEY,
+  checklist_item_id UUID NOT NULL REFERENCES closing_checklist_items (id) ON DELETE CASCADE,
+  storage_key TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS closing_checklist_item_photos_item_idx
+  ON closing_checklist_item_photos (checklist_item_id);
 
 CREATE TABLE IF NOT EXISTS closings (
   id UUID PRIMARY KEY,
@@ -130,17 +137,6 @@ CREATE TABLE IF NOT EXISTS closing_items (
 );
 CREATE INDEX IF NOT EXISTS closing_items_closing_idx
   ON closing_items (closing_id, sort_order);
-
-CREATE TABLE IF NOT EXISTS closing_item_photos (
-  id UUID PRIMARY KEY,
-  closing_item_id UUID NOT NULL REFERENCES closing_items (id) ON DELETE CASCADE,
-  storage_key TEXT NOT NULL,
-  content_type TEXT NOT NULL,
-  created_by TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS closing_item_photos_item_idx
-  ON closing_item_photos (closing_item_id);
 `)
 	return err
 }
@@ -155,11 +151,35 @@ SELECT COUNT(*) FROM closing_checklist_items WHERE house_id = $1`, houseID).Scan
 		return nil
 	}
 	for i, item := range defaultChecklistSeed() {
-		if _, err := s.CreateChecklistItem(ctx, houseID, item.Label, item.Optional, item.RequiresPhoto, i); err != nil {
+		if _, err := s.CreateChecklistItem(ctx, houseID, item.Label, item.Optional, i); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (s *Store) loadChecklistPhotos(ctx context.Context, itemIDs []string) (map[string][]ChecklistItemPhoto, error) {
+	out := map[string][]ChecklistItemPhoto{}
+	if len(itemIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+SELECT id::text, checklist_item_id::text, content_type, created_by, created_at
+FROM closing_checklist_item_photos
+WHERE checklist_item_id = ANY($1::uuid[])
+ORDER BY created_at ASC`, itemIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p ChecklistItemPhoto
+		if err := rows.Scan(&p.ID, &p.ChecklistItemID, &p.ContentType, &p.CreatedBy, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		out[p.ChecklistItemID] = append(out[p.ChecklistItemID], p)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) ListChecklistItems(ctx context.Context, houseID string) ([]ChecklistItem, error) {
@@ -167,7 +187,7 @@ func (s *Store) ListChecklistItems(ctx context.Context, houseID string) ([]Check
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `
-SELECT id::text, house_id::text, label, optional, requires_photo, sort_order, created_at
+SELECT id::text, house_id::text, label, optional, sort_order, created_at
 FROM closing_checklist_items
 WHERE house_id = $1
 ORDER BY sort_order ASC, created_at ASC`, houseID)
@@ -177,28 +197,44 @@ ORDER BY sort_order ASC, created_at ASC`, houseID)
 	defer rows.Close()
 
 	var out []ChecklistItem
+	ids := make([]string, 0)
 	for rows.Next() {
 		var it ChecklistItem
-		if err := rows.Scan(&it.ID, &it.HouseID, &it.Label, &it.Optional, &it.RequiresPhoto, &it.SortOrder, &it.CreatedAt); err != nil {
+		if err := rows.Scan(&it.ID, &it.HouseID, &it.Label, &it.Optional, &it.SortOrder, &it.CreatedAt); err != nil {
 			return nil, err
 		}
+		it.Photos = []ChecklistItemPhoto{}
 		out = append(out, it)
+		ids = append(ids, it.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	if out == nil {
 		out = []ChecklistItem{}
 	}
-	return out, rows.Err()
+	photos, err := s.loadChecklistPhotos(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if p, ok := photos[out[i].ID]; ok {
+			out[i].Photos = p
+		}
+	}
+	return out, nil
 }
 
-func (s *Store) CreateChecklistItem(ctx context.Context, houseID, label string, optional, requiresPhoto bool, sortOrder int) (ChecklistItem, error) {
+func (s *Store) CreateChecklistItem(ctx context.Context, houseID, label string, optional bool, sortOrder int) (ChecklistItem, error) {
 	id := uuid.NewString()
 	var it ChecklistItem
 	err := s.pool.QueryRow(ctx, `
-INSERT INTO closing_checklist_items (id, house_id, label, optional, requires_photo, sort_order)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id::text, house_id::text, label, optional, requires_photo, sort_order, created_at`,
-		id, houseID, label, optional, requiresPhoto, sortOrder,
-	).Scan(&it.ID, &it.HouseID, &it.Label, &it.Optional, &it.RequiresPhoto, &it.SortOrder, &it.CreatedAt)
+INSERT INTO closing_checklist_items (id, house_id, label, optional, sort_order)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id::text, house_id::text, label, optional, sort_order, created_at`,
+		id, houseID, label, optional, sortOrder,
+	).Scan(&it.ID, &it.HouseID, &it.Label, &it.Optional, &it.SortOrder, &it.CreatedAt)
+	it.Photos = []ChecklistItemPhoto{}
 	return it, err
 }
 
@@ -210,16 +246,27 @@ FROM closing_checklist_items WHERE house_id = $1`, houseID).Scan(&n)
 	return n, err
 }
 
-func (s *Store) UpdateChecklistItem(ctx context.Context, itemID, houseID, label string, optional, requiresPhoto bool) (ChecklistItem, error) {
+func (s *Store) UpdateChecklistItem(ctx context.Context, itemID, houseID, label string, optional bool) (ChecklistItem, error) {
 	var it ChecklistItem
 	err := s.pool.QueryRow(ctx, `
 UPDATE closing_checklist_items
-SET label = $3, optional = $4, requires_photo = $5
+SET label = $3, optional = $4
 WHERE id = $1 AND house_id = $2
-RETURNING id::text, house_id::text, label, optional, requires_photo, sort_order, created_at`,
-		itemID, houseID, label, optional, requiresPhoto,
-	).Scan(&it.ID, &it.HouseID, &it.Label, &it.Optional, &it.RequiresPhoto, &it.SortOrder, &it.CreatedAt)
-	return it, err
+RETURNING id::text, house_id::text, label, optional, sort_order, created_at`,
+		itemID, houseID, label, optional,
+	).Scan(&it.ID, &it.HouseID, &it.Label, &it.Optional, &it.SortOrder, &it.CreatedAt)
+	if err != nil {
+		return ChecklistItem{}, err
+	}
+	photos, err := s.loadChecklistPhotos(ctx, []string{it.ID})
+	if err != nil {
+		return ChecklistItem{}, err
+	}
+	it.Photos = photos[it.ID]
+	if it.Photos == nil {
+		it.Photos = []ChecklistItemPhoto{}
+	}
+	return it, nil
 }
 
 func (s *Store) DeleteChecklistItem(ctx context.Context, itemID, houseID string) error {
@@ -267,16 +314,6 @@ LIMIT 50`, houseID)
 	return out, rows.Err()
 }
 
-func (s *Store) GetOpenClosing(ctx context.Context, houseID string) (Closing, error) {
-	var c Closing
-	err := s.pool.QueryRow(ctx, `
-SELECT id::text, house_id::text, started_by, status, started_at, completed_at
-FROM closings
-WHERE house_id = $1 AND status = 'open'`, houseID,
-	).Scan(&c.ID, &c.HouseID, &c.StartedBy, &c.Status, &c.StartedAt, &c.CompletedAt)
-	return c, err
-}
-
 func (s *Store) StartClosing(ctx context.Context, houseID, userSub string) (ClosingDetail, error) {
 	if err := s.EnsureDefaultChecklist(ctx, houseID); err != nil {
 		return ClosingDetail{}, err
@@ -319,9 +356,9 @@ RETURNING id::text, house_id::text, started_by, status, started_at, completed_at
 		itemID := uuid.NewString()
 		if _, err := tx.Exec(ctx, `
 INSERT INTO closing_items (
-  id, closing_id, template_item_id, label, optional, requires_photo, sort_order, status
-) VALUES ($1, $2, $3, $4, $5, $6, $7, 'todo')`,
-			itemID, closingID, t.ID, t.Label, t.Optional, t.RequiresPhoto, t.SortOrder,
+  id, closing_id, template_item_id, label, optional, sort_order, status
+) VALUES ($1, $2, $3, $4, $5, $6, 'todo')`,
+			itemID, closingID, t.ID, t.Label, t.Optional, t.SortOrder,
 		); err != nil {
 			return ClosingDetail{}, err
 		}
@@ -351,7 +388,8 @@ FROM closings WHERE id = $1`, closingID,
 	}
 
 	rows, err := s.pool.Query(ctx, `
-SELECT id::text, closing_id::text, label, optional, requires_photo, sort_order, status, updated_at
+SELECT id::text, closing_id::text, label, optional, sort_order, status, updated_at,
+       template_item_id::text
 FROM closing_items
 WHERE closing_id = $1
 ORDER BY sort_order ASC, label ASC`, closingID)
@@ -360,77 +398,64 @@ ORDER BY sort_order ASC, label ASC`, closingID)
 	}
 	defer rows.Close()
 
-	var items []ClosingItem
-	itemIDs := make([]string, 0)
+	type rowItem struct {
+		item       ClosingItem
+		templateID *string
+	}
+	var rowsOut []rowItem
+	templateIDs := make([]string, 0)
 	for rows.Next() {
 		var it ClosingItem
-		if err := rows.Scan(&it.ID, &it.ClosingID, &it.Label, &it.Optional, &it.RequiresPhoto, &it.SortOrder, &it.Status, &it.UpdatedAt); err != nil {
+		var templateID *string
+		if err := rows.Scan(&it.ID, &it.ClosingID, &it.Label, &it.Optional, &it.SortOrder, &it.Status, &it.UpdatedAt, &templateID); err != nil {
 			return ClosingDetail{}, err
 		}
-		it.Photos = []ClosingItemPhoto{}
-		items = append(items, it)
-		itemIDs = append(itemIDs, it.ID)
+		it.Photos = []ChecklistItemPhoto{}
+		rowsOut = append(rowsOut, rowItem{item: it, templateID: templateID})
+		if templateID != nil && *templateID != "" {
+			templateIDs = append(templateIDs, *templateID)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return ClosingDetail{}, err
 	}
-	if items == nil {
-		items = []ClosingItem{}
+
+	photos, err := s.loadChecklistPhotos(ctx, templateIDs)
+	if err != nil {
+		return ClosingDetail{}, err
 	}
 
-	if len(itemIDs) > 0 {
-		photoRows, err := s.pool.Query(ctx, `
-SELECT id::text, closing_item_id::text, content_type, created_by, created_at
-FROM closing_item_photos
-WHERE closing_item_id = ANY($1::uuid[])
-ORDER BY created_at ASC`, itemIDs)
-		if err != nil {
-			return ClosingDetail{}, err
-		}
-		defer photoRows.Close()
-
-		byItem := map[string][]ClosingItemPhoto{}
-		for photoRows.Next() {
-			var p ClosingItemPhoto
-			if err := photoRows.Scan(&p.ID, &p.ClosingItemID, &p.ContentType, &p.CreatedBy, &p.CreatedAt); err != nil {
-				return ClosingDetail{}, err
-			}
-			byItem[p.ClosingItemID] = append(byItem[p.ClosingItemID], p)
-		}
-		if err := photoRows.Err(); err != nil {
-			return ClosingDetail{}, err
-		}
-		for i := range items {
-			if photos, ok := byItem[items[i].ID]; ok {
-				items[i].Photos = photos
+	items := make([]ClosingItem, 0, len(rowsOut))
+	for _, r := range rowsOut {
+		if r.templateID != nil {
+			if p, ok := photos[*r.templateID]; ok {
+				r.item.Photos = p
 			}
 		}
+		items = append(items, r.item)
+	}
+	if items == nil {
+		items = []ClosingItem{}
 	}
 
 	return ClosingDetail{Closing: c, Items: items}, nil
 }
 
 func (s *Store) UpdateClosingItemStatus(ctx context.Context, closingID, itemID, status string) (ClosingItem, error) {
-	var c Closing
+	var closingStatus string
 	err := s.pool.QueryRow(ctx, `
-SELECT id::text, house_id::text, started_by, status, started_at, completed_at
-FROM closings WHERE id = $1`, closingID,
-	).Scan(&c.ID, &c.HouseID, &c.StartedBy, &c.Status, &c.StartedAt, &c.CompletedAt)
+SELECT status FROM closings WHERE id = $1`, closingID).Scan(&closingStatus)
 	if err != nil {
 		return ClosingItem{}, err
 	}
-	if c.Status != "open" {
+	if closingStatus != "open" {
 		return ClosingItem{}, ErrClosingNotOpen
 	}
 
-	var optional, requiresPhoto bool
-	var photoCount int
+	var optional bool
 	err = s.pool.QueryRow(ctx, `
-SELECT optional, requires_photo,
-  (SELECT COUNT(*) FROM closing_item_photos p WHERE p.closing_item_id = i.id)
-FROM closing_items i
-WHERE i.id = $1 AND i.closing_id = $2`, itemID, closingID,
-	).Scan(&optional, &requiresPhoto, &photoCount)
+SELECT optional FROM closing_items
+WHERE id = $1 AND closing_id = $2`, itemID, closingID).Scan(&optional)
 	if err != nil {
 		return ClosingItem{}, err
 	}
@@ -443,32 +468,25 @@ WHERE i.id = $1 AND i.closing_id = $2`, itemID, closingID,
 	if status == "skipped" && !optional {
 		return ClosingItem{}, ErrSkipRequired
 	}
-	if status == "done" && requiresPhoto && photoCount == 0 {
-		return ClosingItem{}, ErrPhotoRequired
-	}
 
-	var it ClosingItem
-	err = s.pool.QueryRow(ctx, `
+	_, err = s.pool.Exec(ctx, `
 UPDATE closing_items
 SET status = $3, updated_at = now()
-WHERE id = $1 AND closing_id = $2
-RETURNING id::text, closing_id::text, label, optional, requires_photo, sort_order, status, updated_at`,
-		itemID, closingID, status,
-	).Scan(&it.ID, &it.ClosingID, &it.Label, &it.Optional, &it.RequiresPhoto, &it.SortOrder, &it.Status, &it.UpdatedAt)
+WHERE id = $1 AND closing_id = $2`, itemID, closingID, status)
 	if err != nil {
 		return ClosingItem{}, err
 	}
-	it.Photos = []ClosingItemPhoto{}
+
 	detail, err := s.GetClosingDetail(ctx, closingID)
 	if err != nil {
-		return it, nil
+		return ClosingItem{}, err
 	}
 	for _, d := range detail.Items {
 		if d.ID == itemID {
 			return d, nil
 		}
 	}
-	return it, nil
+	return ClosingItem{}, pgx.ErrNoRows
 }
 
 func (s *Store) CompleteClosing(ctx context.Context, closingID string) (ClosingDetail, error) {
@@ -486,9 +504,6 @@ func (s *Store) CompleteClosing(ctx context.Context, closingID string) (ClosingD
 		if it.Status != "done" {
 			return ClosingDetail{}, ErrRequiredPending
 		}
-		if it.RequiresPhoto && len(it.Photos) == 0 {
-			return ClosingDetail{}, ErrPhotoRequired
-		}
 	}
 
 	_, err = s.pool.Exec(ctx, `
@@ -501,44 +516,24 @@ WHERE id = $1 AND status = 'open'`, closingID)
 	return s.GetClosingDetail(ctx, closingID)
 }
 
-func (s *Store) GetClosingItemMeta(ctx context.Context, closingID, itemID string) (houseID string, closingStatus string, err error) {
-	err = s.pool.QueryRow(ctx, `
-SELECT c.house_id::text, c.status
-FROM closing_items i
-JOIN closings c ON c.id = i.closing_id
-WHERE i.id = $1 AND i.closing_id = $2`, itemID, closingID,
-	).Scan(&houseID, &closingStatus)
-	return houseID, closingStatus, err
-}
-
-func (s *Store) AddClosingItemPhoto(ctx context.Context, closingID, itemID, userSub, storageKey, contentType string) (ClosingItemPhoto, error) {
-	houseID, status, err := s.GetClosingItemMeta(ctx, closingID, itemID)
-	if err != nil {
-		return ClosingItemPhoto{}, err
-	}
-	_ = houseID
-	if status != "open" {
-		return ClosingItemPhoto{}, ErrClosingNotOpen
-	}
-
+func (s *Store) AddChecklistItemPhoto(ctx context.Context, itemID, userSub, storageKey, contentType string) (ChecklistItemPhoto, error) {
 	id := uuid.NewString()
-	var p ClosingItemPhoto
-	err = s.pool.QueryRow(ctx, `
-INSERT INTO closing_item_photos (id, closing_item_id, storage_key, content_type, created_by)
+	var p ChecklistItemPhoto
+	err := s.pool.QueryRow(ctx, `
+INSERT INTO closing_checklist_item_photos (id, checklist_item_id, storage_key, content_type, created_by)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id::text, closing_item_id::text, content_type, created_by, created_at`,
+RETURNING id::text, checklist_item_id::text, content_type, created_by, created_at`,
 		id, itemID, storageKey, contentType, userSub,
-	).Scan(&p.ID, &p.ClosingItemID, &p.ContentType, &p.CreatedBy, &p.CreatedAt)
+	).Scan(&p.ID, &p.ChecklistItemID, &p.ContentType, &p.CreatedBy, &p.CreatedAt)
 	return p, err
 }
 
 func (s *Store) GetClosingPhotoFile(ctx context.Context, photoID string) (ClosingPhotoFile, error) {
 	var f ClosingPhotoFile
 	err := s.pool.QueryRow(ctx, `
-SELECT p.id::text, c.house_id::text, p.storage_key, p.content_type, p.created_at
-FROM closing_item_photos p
-JOIN closing_items i ON i.id = p.closing_item_id
-JOIN closings c ON c.id = i.closing_id
+SELECT p.id::text, i.house_id::text, p.storage_key, p.content_type, p.created_at
+FROM closing_checklist_item_photos p
+JOIN closing_checklist_items i ON i.id = p.checklist_item_id
 WHERE p.id = $1`, photoID,
 	).Scan(&f.ID, &f.HouseID, &f.StorageKey, &f.ContentType, &f.CreatedAt)
 	return f, err
@@ -549,7 +544,7 @@ func (s *Store) DeleteClosingPhoto(ctx context.Context, photoID string) (Closing
 	if err != nil {
 		return ClosingPhotoFile{}, err
 	}
-	tag, err := s.pool.Exec(ctx, `DELETE FROM closing_item_photos WHERE id = $1`, photoID)
+	tag, err := s.pool.Exec(ctx, `DELETE FROM closing_checklist_item_photos WHERE id = $1`, photoID)
 	if err != nil {
 		return ClosingPhotoFile{}, err
 	}

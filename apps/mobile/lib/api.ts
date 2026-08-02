@@ -109,14 +109,22 @@ export async function deleteOccupation(accessToken: string, occupationId: string
   }
 }
 
+export type ChecklistItemPhoto = {
+  id: string;
+  checklist_item_id: string;
+  content_type: string;
+  created_by: string;
+  created_at: string;
+};
+
 export type ChecklistItem = {
   id: string;
   house_id: string;
   label: string;
   optional: boolean;
-  requires_photo: boolean;
   sort_order: number;
   created_at: string;
+  photos: ChecklistItemPhoto[];
 };
 
 export type Closing = {
@@ -128,24 +136,16 @@ export type Closing = {
   completed_at?: string;
 };
 
-export type ClosingItemPhoto = {
-  id: string;
-  closing_item_id: string;
-  content_type: string;
-  created_by: string;
-  created_at: string;
-};
-
 export type ClosingItem = {
   id: string;
   closing_id: string;
   label: string;
   optional: boolean;
-  requires_photo: boolean;
   sort_order: number;
   status: 'todo' | 'done' | 'skipped';
   updated_at: string;
-  photos: ClosingItemPhoto[];
+  /** Indication photos from the template item. */
+  photos: ChecklistItemPhoto[];
 };
 
 export type ClosingDetail = Closing & {
@@ -164,7 +164,7 @@ export async function fetchChecklistItems(
 export async function createChecklistItem(
   accessToken: string,
   houseId: string,
-  input: { label: string; optional?: boolean; requires_photo?: boolean },
+  input: { label: string; optional?: boolean },
 ): Promise<ChecklistItem> {
   return getJSON(`/houses/${houseId}/closing-checklist/items`, {
     method: 'POST',
@@ -179,7 +179,7 @@ export async function createChecklistItem(
 export async function updateChecklistItem(
   accessToken: string,
   itemId: string,
-  input: { label: string; optional: boolean; requires_photo: boolean },
+  input: { label: string; optional: boolean },
 ): Promise<ChecklistItem> {
   return getJSON(`/closing-checklist/items/${itemId}`, {
     method: 'PATCH',
@@ -249,13 +249,12 @@ export async function completeClosing(
   });
 }
 
-export async function uploadClosingPhoto(
+export async function uploadChecklistPhoto(
   accessToken: string,
-  closingId: string,
   itemId: string,
   uri: string,
   mimeType?: string | null,
-): Promise<ClosingItemPhoto> {
+): Promise<ChecklistItemPhoto> {
   const form = new FormData();
   const name = uri.split('/').pop() || 'photo.jpg';
   form.append('photo', {
@@ -264,14 +263,11 @@ export async function uploadClosingPhoto(
     type: mimeType || 'image/jpeg',
   } as unknown as Blob);
 
-  const res = await fetch(
-    `${apiBaseUrl()}/closings/${closingId}/items/${itemId}/photos`,
-    {
-      method: 'POST',
-      headers: authHeaders(accessToken),
-      body: form,
-    },
-  );
+  const res = await fetch(`${apiBaseUrl()}/closing-checklist/items/${itemId}/photos`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: form,
+  });
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try {
@@ -282,10 +278,10 @@ export async function uploadClosingPhoto(
     }
     throw new Error(detail);
   }
-  return res.json() as Promise<ClosingItemPhoto>;
+  return res.json() as Promise<ChecklistItemPhoto>;
 }
 
-export async function deleteClosingPhoto(accessToken: string, photoId: string): Promise<void> {
+export async function deleteChecklistPhoto(accessToken: string, photoId: string): Promise<void> {
   const res = await fetch(`${apiBaseUrl()}/closing-photos/${photoId}`, {
     method: 'DELETE',
     headers: authHeaders(accessToken),
@@ -295,7 +291,7 @@ export async function deleteClosingPhoto(accessToken: string, photoId: string): 
   }
 }
 
-export function closingPhotoUrl(photoId: string): string {
+export function checklistPhotoUrl(photoId: string): string {
   return `${apiBaseUrl()}/closing-photos/${photoId}`;
 }
 

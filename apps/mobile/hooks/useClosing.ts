@@ -4,14 +4,14 @@ import {
   completeClosing,
   createChecklistItem,
   deleteChecklistItem,
-  deleteClosingPhoto,
+  deleteChecklistPhoto,
   fetchChecklistItems,
   fetchClosing,
   fetchClosings,
   startClosing,
   updateChecklistItem,
   updateClosingItemStatus,
-  uploadClosingPhoto,
+  uploadChecklistPhoto,
   type ClosingItem,
 } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
@@ -101,45 +101,11 @@ export function useCompleteClosing(closingId: string | undefined, houseId: strin
   });
 }
 
-export function useUploadClosingPhoto(closingId: string | undefined) {
-  const { token } = useSession();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { itemId: string; uri: string; mimeType?: string | null }) => {
-      if (!token || !closingId) throw new Error('unauthorized');
-      return uploadClosingPhoto(token, closingId, input.itemId, input.uri, input.mimeType);
-    },
-    onSuccess: async () => {
-      if (!closingId) return;
-      await qc.invalidateQueries({ queryKey: queryKeys.closing(closingId) });
-    },
-  });
-}
-
-export function useDeleteClosingPhoto(closingId: string | undefined) {
-  const { token } = useSession();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (photoId: string) => {
-      if (!token) throw new Error('unauthorized');
-      await deleteClosingPhoto(token, photoId);
-    },
-    onSuccess: async () => {
-      if (!closingId) return;
-      await qc.invalidateQueries({ queryKey: queryKeys.closing(closingId) });
-    },
-  });
-}
-
 export function useCreateChecklistItem(houseId: string | undefined) {
   const { token } = useSession();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      label: string;
-      optional?: boolean;
-      requires_photo?: boolean;
-    }) => {
+    mutationFn: async (input: { label: string; optional?: boolean }) => {
       if (!token || !houseId) throw new Error('unauthorized');
       return createChecklistItem(token, houseId, input);
     },
@@ -154,17 +120,11 @@ export function useUpdateChecklistItem(houseId: string | undefined) {
   const { token } = useSession();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      itemId: string;
-      label: string;
-      optional: boolean;
-      requires_photo: boolean;
-    }) => {
+    mutationFn: async (input: { itemId: string; label: string; optional: boolean }) => {
       if (!token) throw new Error('unauthorized');
       return updateChecklistItem(token, input.itemId, {
         label: input.label,
         optional: input.optional,
-        requires_photo: input.requires_photo,
       });
     },
     onSuccess: async () => {
@@ -181,6 +141,36 @@ export function useDeleteChecklistItem(houseId: string | undefined) {
     mutationFn: async (itemId: string) => {
       if (!token) throw new Error('unauthorized');
       await deleteChecklistItem(token, itemId);
+    },
+    onSuccess: async () => {
+      if (!houseId) return;
+      await qc.invalidateQueries({ queryKey: queryKeys.checklistItems(houseId) });
+    },
+  });
+}
+
+export function useUploadChecklistPhoto(houseId: string | undefined) {
+  const { token } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { itemId: string; uri: string; mimeType?: string | null }) => {
+      if (!token) throw new Error('unauthorized');
+      return uploadChecklistPhoto(token, input.itemId, input.uri, input.mimeType);
+    },
+    onSuccess: async () => {
+      if (!houseId) return;
+      await qc.invalidateQueries({ queryKey: queryKeys.checklistItems(houseId) });
+    },
+  });
+}
+
+export function useDeleteChecklistPhoto(houseId: string | undefined) {
+  const { token } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (photoId: string) => {
+      if (!token) throw new Error('unauthorized');
+      await deleteChecklistPhoto(token, photoId);
     },
     onSuccess: async () => {
       if (!houseId) return;

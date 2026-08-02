@@ -6,7 +6,6 @@ import {
   StyleSheet,
   View as RNView,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams } from 'expo-router';
 
 import { AuthedImage } from '@/components/AuthedImage';
@@ -14,18 +13,14 @@ import { Text, View } from '@/components/Themed';
 import {
   useClosing,
   useCompleteClosing,
-  useDeleteClosingPhoto,
   useUpdateClosingItem,
-  useUploadClosingPhoto,
 } from '@/hooks/useClosing';
-import { closingPhotoUrl, type ClosingItem } from '@/lib/api';
+import { checklistPhotoUrl, type ClosingItem } from '@/lib/api';
 
 export default function ClosingRunScreen() {
   const { closingId } = useLocalSearchParams<{ closingId: string }>();
   const closing = useClosing(closingId);
   const updateItem = useUpdateClosingItem(closingId);
-  const uploadPhoto = useUploadClosingPhoto(closingId);
-  const deletePhoto = useDeleteClosingPhoto(closingId);
   const complete = useCompleteClosing(closingId, closing.data?.house_id);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +28,7 @@ export default function ClosingRunScreen() {
     const items = closing.data?.items ?? [];
     const required = items.filter((i) => !i.optional);
     const doneReq = required.filter((i) => i.status === 'done').length;
-    return { doneReq, required: required.length, total: items.length };
+    return { doneReq, required: required.length };
   }, [closing.data?.items]);
 
   if (closing.isLoading) {
@@ -59,46 +54,12 @@ export default function ClosingRunScreen() {
     setError(null);
     void updateItem.mutateAsync({ itemId: item.id, status }).catch((e) => {
       const msg = e instanceof Error ? e.message : 'erreur';
-      if (msg.includes('photo_required') || msg.includes('400')) {
-        setError('Ajoute une photo avant de valider cette tâche.');
-      } else if (msg.includes('cannot_skip')) {
+      if (msg.includes('cannot_skip')) {
         setError('Cette tâche est requise — elle ne peut pas être ignorée.');
       } else {
         setError(msg);
       }
     });
-  };
-
-  const addPhoto = async (item: ClosingItem) => {
-    setError(null);
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      const library = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!library.granted) {
-        setError('Autorise l’accès à la caméra ou à la photothèque.');
-        return;
-      }
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.7,
-      exif: false,
-    }).catch(async () =>
-      ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        quality: 0.7,
-      }),
-    );
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    try {
-      await uploadPhoto.mutateAsync({
-        itemId: item.id,
-        uri: asset.uri,
-        mimeType: asset.mimeType,
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'upload impossible');
-    }
   };
 
   return (
@@ -124,54 +85,35 @@ export default function ClosingRunScreen() {
                 <Text style={[styles.itemTitle, (checked || skipped) && styles.itemDone]}>
                   {item.label}
                 </Text>
-                <Text style={styles.badges}>
-                  {item.optional ? 'Optionnelle' : 'Requise'}
-                  {item.requires_photo ? ' · photo requise' : ''}
-                </Text>
+                <Text style={styles.badges}>{item.optional ? 'Optionnelle' : 'Requise'}</Text>
               </View>
             </Pressable>
-
-            {open ? (
-              <View style={styles.actions}>
-                {item.optional && !skipped ? (
-                  <Pressable onPress={() => setStatus(item, 'skipped')}>
-                    <Text style={styles.link}>Ignorer</Text>
-                  </Pressable>
-                ) : null}
-                {skipped ? (
-                  <Pressable onPress={() => setStatus(item, 'todo')}>
-                    <Text style={styles.link}>Réactiver</Text>
-                  </Pressable>
-                ) : null}
-                <Pressable
-                  onPress={() => void addPhoto(item)}
-                  disabled={uploadPhoto.isPending}
-                >
-                  <Text style={styles.link}>Ajouter photo</Text>
-                </Pressable>
-              </View>
-            ) : null}
 
             {item.photos?.length ? (
               <ScrollView horizontal style={styles.photos} showsHorizontalScrollIndicator={false}>
                 {item.photos.map((p) => (
-                  <View key={p.id} style={styles.photoWrap}>
-                    <AuthedImage
-                      url={closingPhotoUrl(p.id)}
-                      cacheKey={p.id}
-                      style={styles.photo}
-                    />
-                    {open ? (
-                      <Pressable
-                        onPress={() => void deletePhoto.mutateAsync(p.id)}
-                        style={styles.photoDel}
-                      >
-                        <Text style={styles.photoDelText}>×</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
+                  <AuthedImage
+                    key={p.id}
+                    url={checklistPhotoUrl(p.id)}
+                    cacheKey={p.id}
+                    style={styles.photo}
+                  />
                 ))}
               </ScrollView>
+            ) : null}
+
+            {open && item.optional ? (
+              <View style={styles.actions}>
+                {!skipped ? (
+                  <Pressable onPress={() => setStatus(item, 'skipped')}>
+                    <Text style={styles.link}>Ignorer</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable onPress={() => setStatus(item, 'todo')}>
+                    <Text style={styles.link}>Réactiver</Text>
+                  </Pressable>
+                )}
+              </View>
             ) : null}
           </View>
         );
@@ -185,8 +127,8 @@ export default function ClosingRunScreen() {
             setError(null);
             void complete.mutateAsync().catch((e) => {
               const msg = e instanceof Error ? e.message : 'erreur';
-              if (msg.includes('required_pending') || msg.includes('400')) {
-                setError('Termine toutes les tâches requises (avec photo si demandé).');
+              if (msg.includes('required_pending')) {
+                setError('Termine toutes les tâches requises.');
               } else {
                 setError(msg);
               }
@@ -270,6 +212,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.55,
   },
+  photos: {
+    marginTop: 12,
+    marginLeft: 40,
+  },
+  photo: {
+    width: 84,
+    height: 84,
+    borderRadius: 8,
+    marginRight: 10,
+  },
   actions: {
     marginTop: 10,
     marginLeft: 40,
@@ -280,35 +232,6 @@ const styles = StyleSheet.create({
   link: {
     opacity: 0.7,
     fontSize: 13,
-  },
-  photos: {
-    marginTop: 12,
-    marginLeft: 40,
-  },
-  photoWrap: {
-    marginRight: 10,
-    position: 'relative',
-  },
-  photo: {
-    width: 84,
-    height: 84,
-    borderRadius: 8,
-  },
-  photoDel: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoDelText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
   },
   button: {
     marginTop: 28,
