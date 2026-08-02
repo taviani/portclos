@@ -12,10 +12,11 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/taviani/portclos/services/api/internal/auth"
+	"github.com/taviani/portclos/services/api/internal/media"
 	"github.com/taviani/portclos/services/api/internal/store"
 )
 
-func NewRouter(validator *auth.Validator, db *store.Store) http.Handler {
+func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -181,6 +182,8 @@ func NewRouter(validator *auth.Validator, db *store.Store) http.Handler {
 			}
 			w.WriteHeader(http.StatusNoContent)
 		})
+
+		mountClosingRoutes(pr, db, files)
 	})
 
 	return r

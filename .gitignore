@@ -24,6 +24,10 @@ secrets/
 dist/
 web-build/
 
+# Local API uploads (closing checklist photos)
+data/
+services/api/data/
+
 # Go
 services/api/bin/
 *.exe

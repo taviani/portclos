@@ -5,6 +5,7 @@ export default function MaisonLayout() {
     <Stack>
       <Stack.Screen name="index" options={{ title: 'Maison' }} />
       <Stack.Screen name="presences" options={{ title: 'Présences' }} />
+      <Stack.Screen name="fermeture" options={{ headerShown: false }} />
     </Stack>
   );
 }

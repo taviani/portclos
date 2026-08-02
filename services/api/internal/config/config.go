@@ -11,6 +11,7 @@ type Config struct {
 	AuthIssuer   string
 	AuthDisabled bool
 	DatabaseURL  string
+	UploadDir    string
 }
 
 func Load() (Config, error) {
@@ -31,10 +32,15 @@ func Load() (Config, error) {
 	if dbURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
 	}
+	uploadDir := os.Getenv("UPLOAD_DIR")
+	if uploadDir == "" {
+		uploadDir = "./data/uploads"
+	}
 	return Config{
 		Port:         port,
 		AuthIssuer:   issuer,
 		AuthDisabled: disabled,
 		DatabaseURL:  dbURL,
+		UploadDir:    uploadDir,
 	}, nil
 }
