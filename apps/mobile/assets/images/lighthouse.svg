@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 420" fill="none">
+  <defs>
+    <linearGradient id="sky" x1="160" y1="0" x2="160" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#031A22"/>
+      <stop offset="0.55" stop-color="#0A3D42"/>
+      <stop offset="1" stop-color="#0E7C7B"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(160 78) rotate(90) scale(120 90)">
+      <stop stop-color="#FFE08A" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#F5C542" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#F5C542" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rock" x1="40" y1="300" x2="280" y2="400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B4A32"/>
+      <stop offset="1" stop-color="#5C2E1F"/>
+    </linearGradient>
+    <linearGradient id="water" x1="160" y1="360" x2="160" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B4F6C" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#062C38" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Soft lantern bloom (static in asset; animated in-app) -->
+  <ellipse cx="160" cy="78" rx="118" ry="88" fill="url(#glow)"/>
+
+  <!-- Distant water -->
+  <path d="M0 355C48 340 96 348 160 352C224 356 272 348 320 355V420H0V355Z" fill="url(#water)"/>
+
+  <!-- Rocks -->
+  <path d="M28 372C48 330 78 318 118 328C142 334 156 348 176 344C214 336 246 318 292 348C304 358 312 372 318 388H22C20 380 22 376 28 372Z" fill="url(#rock)"/>
+  <path d="M62 378C78 352 104 346 128 354C146 360 158 372 180 368C210 362 236 350 268 372C278 380 284 390 286 398H58C56 390 58 382 62 378Z" fill="#A35A3C"/>
+  <path d="M96 392C108 374 128 370 148 376C166 382 176 392 196 388C220 382 240 376 258 392H92C92 392 94 396 96 392Z" fill="#6E3824" opacity="0.85"/>
+
+  <!-- Tower shadow -->
+  <ellipse cx="168" cy="348" rx="58" ry="12" fill="#031016" opacity="0.35"/>
+
+  <!-- Tower body -->
+  <path d="M112 318H208L202 168H118L112 318Z" fill="#C9A227"/>
+  <!-- Stone base -->
+  <path d="M108 348H212L208 318H112L108 348Z" fill="#9A8168"/>
+  <path d="M112 336H208" stroke="#7A6550" stroke-width="2" opacity="0.5"/>
+  <path d="M114 326H206" stroke="#7A6550" stroke-width="2" opacity="0.35"/>
+
+  <!-- Lower yellow band -->
+  <path d="M116 288H204L202 248H118L116 288Z" fill="#F2C94C"/>
+
+  <!-- Black band -->
+  <path d="M118 248H202L200 208H120L118 248Z" fill="#141414"/>
+  <text x="160" y="234" text-anchor="middle" fill="#F7F4EA" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="1.5">JOLIGUET</text>
+
+  <!-- Upper yellow cylinder -->
+  <path d="M120 208H200L196 128H124L120 208Z" fill="#F5D76E"/>
+  <path d="M124 128H196L194 112H126L124 128Z" fill="#E8C84A"/>
+
+  <!-- Railing -->
+  <path d="M122 112H198" stroke="#F0D060" stroke-width="3" stroke-linecap="round"/>
+  <path d="M128 104V112M144 104V112M160 104V112M176 104V112M192 104V112" stroke="#F0D060" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Ladder -->
+  <path d="M132 200V130M142 200V130" stroke="#C9A227" stroke-width="2"/>
+  <path d="M132 140H142M132 155H142M132 170H142M132 185H142" stroke="#C9A227" stroke-width="2"/>
+
+  <!-- Solar panel -->
+  <rect x="88" y="148" width="34" height="22" rx="2" transform="rotate(-18 88 148)" fill="#1B2A34" stroke="#8FA3B0" stroke-width="1.5"/>
+  <path d="M92 154L118 146M96 160L122 152M100 166L126 158" stroke="#4A6A7A" stroke-width="1"/>
+
+  <!-- Lantern -->
+  <rect x="142" y="78" width="36" height="34" rx="4" fill="#F2C94C"/>
+  <rect x="146" y="88" width="28" height="14" rx="2" fill="#1F4A3A"/>
+  <ellipse cx="160" cy="78" rx="20" ry="8" fill="#E8C84A"/>
+  <path d="M160 70V58" stroke="#D8B84A" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="160" cy="56" r="2.5" fill="#FFE9A8"/>
+
+  <!-- Lantern glass gleam -->
+  <rect x="150" y="90" width="6" height="10" rx="1" fill="#9ED9C2" opacity="0.55"/>
+</svg>
