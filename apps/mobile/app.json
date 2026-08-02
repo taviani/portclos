@@ -11,7 +11,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.portclos.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Portclos utilise la caméra pour les photos de fermeture de maison.",
+        "NSPhotoLibraryUsageDescription": "Portclos utilise la photothèque pour les photos de fermeture de maison."
       }
     },
     "android": {
@@ -37,6 +39,13 @@
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
           "backgroundColor": "#3d7eb5"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Portclos utilise la caméra pour les photos de fermeture de maison.",
+          "photosPermission": "Portclos utilise la photothèque pour les photos de fermeture de maison."
         }
       ]
     ],

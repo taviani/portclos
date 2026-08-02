@@ -24,11 +24,15 @@ services:
     env_file: .env
     environment:
       PORT: "8080"
+      UPLOAD_DIR: /data/uploads
       # Inside Docker, Postgres is the "db" service (overrides host DATABASE_URL from .env).
       DATABASE_URL: postgres://${POSTGRES_USER:-portclos}:${POSTGRES_PASSWORD:-portclos}@db:5432/${POSTGRES_DB:-portclos}?sslmode=disable
+    volumes:
+      - portclos_uploads:/data/uploads
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   portclos_pg:
+  portclos_uploads:

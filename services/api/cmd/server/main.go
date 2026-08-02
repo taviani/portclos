@@ -13,6 +13,7 @@ import (
 	"github.com/taviani/portclos/services/api/internal/auth"
 	"github.com/taviani/portclos/services/api/internal/config"
 	"github.com/taviani/portclos/services/api/internal/httpserver"
+	"github.com/taviani/portclos/services/api/internal/media"
 	"github.com/taviani/portclos/services/api/internal/store"
 )
 
@@ -37,11 +38,16 @@ func main() {
 	}
 	defer db.Close()
 
+	files, err := media.New(cfg.UploadDir)
+	if err != nil {
+		log.Fatalf("media: %v", err)
+	}
+
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
-		Handler:      httpserver.NewRouter(validator, db),
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		Handler:      httpserver.NewRouter(validator, db, files),
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
 	}
 
 	go func() {

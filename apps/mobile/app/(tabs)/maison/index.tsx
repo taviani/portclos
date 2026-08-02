@@ -88,6 +88,11 @@ export default function MaisonHubScreen() {
           subtitle="Calendrier et occupations"
           onPress={() => router.push('/(tabs)/maison/presences')}
         />
+        <MenuRow
+          title="Fermeture"
+          subtitle="Checklist de départ, tâches et photos"
+          onPress={() => router.push('/(tabs)/maison/fermeture')}
+        />
       </View>
       {error ? <Text style={styles.err}>{error.message}</Text> : null}
     </View>
