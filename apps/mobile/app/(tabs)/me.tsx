@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Redirect } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ActivityIndicator,
-  Pressable,
-  StyleSheet,
+  Avatar,
+  Button,
+  Divider,
+  List,
+  Text,
   TextInput,
-} from 'react-native';
-import { Redirect } from 'expo-router';
-import { useQueryClient } from '@tanstack/react-query';
+} from 'react-native-paper';
 
-import { Text, View, useThemeColor } from '@/components/Themed';
+import { AuthedImage } from '@/components/AuthedImage';
 import {
   useCreateHouse,
   useCurrentHouseId,
@@ -16,16 +21,20 @@ import {
   useMe,
   useSelectHouse,
 } from '@/hooks/useHouses';
+import {
+  useChangePassword,
+  useDeleteAvatar,
+  useUpdateDisplayName,
+  useUploadAvatar,
+} from '@/hooks/useProfile';
+import { avatarUrl } from '@/lib/api';
 import { setCurrentHouseId } from '@/lib/auth';
 import { queryKeys } from '@/lib/queryKeys';
 import { useSession } from '@/providers/SessionProvider';
+import { useAppTheme } from '@/theme/paper';
 
 export default function MeScreen() {
-  const inputColor = useThemeColor({}, 'text');
-  const inputBorder = useThemeColor({ light: '#ccc', dark: '#555' }, 'text');
-  const inputBg = useThemeColor({ light: '#fff', dark: '#1c1c1e' }, 'background');
-  const placeholderColor = useThemeColor({ light: '#888', dark: '#8e8e93' }, 'text');
-
+  const theme = useAppTheme();
   const { token, ready, signOut } = useSession();
   const qc = useQueryClient();
   const me = useMe();
@@ -33,9 +42,25 @@ export default function MeScreen() {
   const currentHouseId = useCurrentHouseId();
   const createHouse = useCreateHouse();
   const selectHouse = useSelectHouse();
+  const updateName = useUpdateDisplayName();
+  const uploadAvatar = useUploadAvatar();
+  const removeAvatar = useDeleteAvatar();
+  const changePassword = useChangePassword();
 
+  const [displayName, setDisplayName] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [newHouse, setNewHouse] = useState('');
+  const [showAddHouse, setShowAddHouse] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passwordOk, setPasswordOk] = useState(false);
+
+  useEffect(() => {
+    if (me.data) {
+      setDisplayName(me.data.display_name || '');
+    }
+  }, [me.data]);
 
   useEffect(() => {
     if (!token || !houses.data?.length || currentHouseId.data) {
@@ -48,14 +73,117 @@ export default function MeScreen() {
     })();
   }, [token, houses.data, currentHouseId.data, qc]);
 
+  const onSaveName = useCallback(async () => {
+    setError(null);
+    try {
+      await updateName.mutateAsync(displayName.trim());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'enregistrement impossible');
+    }
+  }, [displayName, updateName]);
+
+  const pickAvatar = useCallback(() => {
+    setError(null);
+    Alert.alert('Avatar', undefined, [
+      {
+        text: 'Photothèque',
+        onPress: () => {
+          void (async () => {
+            const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (!perm.granted) {
+              setError('Autorise l’accès à la photothèque.');
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              quality: 0.7,
+              allowsEditing: true,
+              aspect: [1, 1],
+            });
+            if (!result.canceled && result.assets[0]) {
+              try {
+                await uploadAvatar.mutateAsync({
+                  uri: result.assets[0].uri,
+                  mimeType: result.assets[0].mimeType,
+                });
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'upload impossible');
+              }
+            }
+          })();
+        },
+      },
+      {
+        text: 'Caméra',
+        onPress: () => {
+          void (async () => {
+            const perm = await ImagePicker.requestCameraPermissionsAsync();
+            if (!perm.granted) {
+              setError('Autorise l’accès à la caméra.');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              quality: 0.7,
+              allowsEditing: true,
+              aspect: [1, 1],
+            });
+            if (!result.canceled && result.assets[0]) {
+              try {
+                await uploadAvatar.mutateAsync({
+                  uri: result.assets[0].uri,
+                  mimeType: result.assets[0].mimeType,
+                });
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'upload impossible');
+              }
+            }
+          })();
+        },
+      },
+      ...(me.data?.has_avatar
+        ? [
+            {
+              text: 'Supprimer',
+              style: 'destructive' as const,
+              onPress: () => {
+                void removeAvatar.mutateAsync().catch((e) => {
+                  setError(e instanceof Error ? e.message : 'suppression impossible');
+                });
+              },
+            },
+          ]
+        : []),
+      { text: 'Annuler', style: 'cancel' as const },
+    ]);
+  }, [me.data?.has_avatar, removeAvatar, uploadAvatar]);
+
+  const onChangePassword = useCallback(async () => {
+    setError(null);
+    setPasswordOk(false);
+    try {
+      await changePassword.mutateAsync({
+        current_password: currentPassword,
+        new_password: newPassword,
+        new_password_confirm: confirmPassword,
+      });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordOk(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'changement impossible');
+    }
+  }, [changePassword, confirmPassword, currentPassword, newPassword]);
+
   const onCreateHouse = useCallback(async () => {
     if (!newHouse.trim()) return;
     setError(null);
     try {
       await createHouse.mutateAsync(newHouse.trim());
       setNewHouse('');
+      setShowAddHouse(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'create failed');
+      setError(e instanceof Error ? e.message : 'création impossible');
     }
   }, [newHouse, createHouse]);
 
@@ -64,23 +192,23 @@ export default function MeScreen() {
       try {
         await selectHouse.mutateAsync(id);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'select failed');
+        setError(e instanceof Error ? e.message : 'sélection impossible');
       }
     },
     [selectHouse],
   );
 
   const email = me.data?.email || me.data?.sub || null;
-  const mutating = createHouse.isPending || selectHouse.isPending;
   const queryError =
     (me.error instanceof Error && me.error.message) ||
     (houses.error instanceof Error && houses.error.message) ||
     null;
+  const initial = (displayName || email || '?').trim().charAt(0).toUpperCase();
 
   if (!ready) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
+      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator animating color={theme.colors.primary} />
       </View>
     );
   }
@@ -90,133 +218,259 @@ export default function MeScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Compte</Text>
-      <Text style={styles.sub}>{email ?? '…'}</Text>
-      <Pressable style={styles.secondary} onPress={() => void signOut()}>
-        <Text style={styles.secondaryText}>Se déconnecter</Text>
-      </Pressable>
+    <ScrollView
+      style={{ backgroundColor: theme.colors.background }}
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text
+        variant="headlineMedium"
+        style={{ color: theme.colors.onBackground, fontWeight: '800', letterSpacing: -0.4 }}
+      >
+        Compte
+      </Text>
 
-      <Text style={styles.section}>Maisons</Text>
+      <View style={styles.avatarBlock}>
+        <Pressable onPress={pickAvatar} accessibilityLabel="Changer l’avatar">
+          {me.data?.has_avatar && me.data.sub ? (
+            <AuthedImage
+              url={avatarUrl(me.data.sub)}
+              cacheKey={`avatar-${me.data.sub}-${me.data.updated_at ?? ''}`}
+              style={styles.avatarImg}
+            />
+          ) : (
+            <Avatar.Text
+              size={88}
+              label={initial}
+              style={{ backgroundColor: theme.colors.primaryContainer }}
+              labelStyle={{ color: theme.colors.onPrimaryContainer, fontWeight: '700' }}
+            />
+          )}
+        </Pressable>
+        <Button mode="text" compact onPress={pickAvatar} loading={uploadAvatar.isPending}>
+          Modifier la photo
+        </Button>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+          {email ?? '…'}
+        </Text>
+      </View>
+
+      <Text
+        variant="labelLarge"
+        style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}
+      >
+        PROFIL
+      </Text>
+      <TextInput
+        mode="outlined"
+        label="Nom d’affichage"
+        value={displayName}
+        onChangeText={setDisplayName}
+        style={{ backgroundColor: theme.colors.surface }}
+      />
+      <Button
+        mode="contained-tonal"
+        onPress={() => void onSaveName()}
+        loading={updateName.isPending}
+        disabled={updateName.isPending}
+        style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 12 }}
+      >
+        Enregistrer le nom
+      </Button>
+
+      <Text
+        variant="labelLarge"
+        style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant, marginTop: 28 }]}
+      >
+        MOT DE PASSE
+      </Text>
+      <TextInput
+        mode="outlined"
+        label="Mot de passe actuel"
+        value={currentPassword}
+        onChangeText={setCurrentPassword}
+        secureTextEntry
+        style={{ backgroundColor: theme.colors.surface, marginBottom: 8 }}
+      />
+      <TextInput
+        mode="outlined"
+        label="Nouveau mot de passe"
+        value={newPassword}
+        onChangeText={setNewPassword}
+        secureTextEntry
+        style={{ backgroundColor: theme.colors.surface, marginBottom: 8 }}
+      />
+      <TextInput
+        mode="outlined"
+        label="Confirmer"
+        value={confirmPassword}
+        onChangeText={setConfirmPassword}
+        secureTextEntry
+        style={{ backgroundColor: theme.colors.surface }}
+      />
+      <Text
+        variant="bodySmall"
+        style={{ color: theme.colors.outline, marginTop: 6 }}
+      >
+        Au moins 12 caractères.
+      </Text>
+      <Button
+        mode="contained-tonal"
+        onPress={() => void onChangePassword()}
+        loading={changePassword.isPending}
+        disabled={
+          changePassword.isPending ||
+          !currentPassword ||
+          !newPassword ||
+          !confirmPassword
+        }
+        style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 12 }}
+      >
+        Changer le mot de passe
+      </Button>
+      {passwordOk ? (
+        <Text style={{ color: theme.colors.primary, marginTop: 8 }}>
+          Mot de passe mis à jour.
+        </Text>
+      ) : null}
+
+      <Button
+        mode="text"
+        icon="logout"
+        onPress={() => void signOut()}
+        style={{ alignSelf: 'flex-start', marginTop: 20 }}
+        textColor={theme.colors.error}
+      >
+        Se déconnecter
+      </Button>
+
+      <Divider style={{ marginVertical: 28 }} />
+
+      <Text
+        variant="labelLarge"
+        style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}
+      >
+        MAISON ACTIVE
+      </Text>
       {houses.isLoading ? (
-        <ActivityIndicator />
+        <ActivityIndicator animating color={theme.colors.primary} />
       ) : (houses.data?.length ?? 0) === 0 ? (
-        <Text style={styles.hint}>Aucune maison — crée la première.</Text>
+        <Text style={{ color: theme.colors.outline }}>Aucune maison pour l’instant.</Text>
       ) : (
         houses.data!.map((h) => {
           const active = h.id === currentHouseId.data;
           return (
-            <Pressable
+            <List.Item
               key={h.id}
-              style={[styles.row, active && styles.rowActive]}
+              title={h.name}
+              description={h.role}
               onPress={() => void onSelectHouse(h.id)}
-            >
-              <Text style={active ? styles.rowTextActive : undefined}>
-                {h.name} ({h.role})
-              </Text>
-            </Pressable>
+              left={(props) => (
+                <List.Icon
+                  {...props}
+                  icon={active ? 'home' : 'home-outline'}
+                  color={active ? theme.colors.primary : theme.colors.onSurfaceVariant}
+                />
+              )}
+              right={
+                active
+                  ? (props) => <List.Icon {...props} icon="check" color={theme.colors.primary} />
+                  : undefined
+              }
+              style={{
+                backgroundColor: active
+                  ? theme.colors.primaryContainer
+                  : theme.colors.elevation.level1,
+                borderRadius: theme.roundness,
+                marginBottom: 8,
+              }}
+              titleStyle={{
+                fontWeight: '700',
+                color: active ? theme.colors.onPrimaryContainer : theme.colors.onSurface,
+              }}
+            />
           );
         })
       )}
 
-      <TextInput
-        style={[
-          styles.input,
-          {
-            color: inputColor,
-            borderColor: inputBorder,
-            backgroundColor: inputBg,
-          },
-        ]}
-        placeholder="Nom de la maison"
-        placeholderTextColor={placeholderColor}
-        value={newHouse}
-        onChangeText={setNewHouse}
-        keyboardAppearance="default"
-      />
-      <Pressable
-        style={[styles.button, mutating && styles.disabled]}
-        onPress={() => void onCreateHouse()}
-        disabled={mutating || !newHouse.trim()}
-      >
-        <Text style={styles.buttonText}>Créer une maison</Text>
-      </Pressable>
-      {error || queryError ? <Text style={styles.err}>{error || queryError}</Text> : null}
-    </View>
+      {!showAddHouse ? (
+        <Pressable onPress={() => setShowAddHouse(true)} style={styles.addHouseLink}>
+          <Text variant="labelSmall" style={{ color: theme.colors.outline }}>
+            Ajouter une maison…
+          </Text>
+        </Pressable>
+      ) : (
+        <View style={styles.addHouseBox}>
+          <TextInput
+            mode="outlined"
+            dense
+            label="Nom"
+            value={newHouse}
+            onChangeText={setNewHouse}
+            style={{ backgroundColor: theme.colors.surface }}
+          />
+          <View style={styles.addHouseActions}>
+            <Button compact onPress={() => setShowAddHouse(false)}>
+              Annuler
+            </Button>
+            <Button
+              compact
+              mode="text"
+              onPress={() => void onCreateHouse()}
+              loading={createHouse.isPending}
+              disabled={!newHouse.trim() || createHouse.isPending}
+            >
+              Créer
+            </Button>
+          </View>
+        </View>
+      )}
+
+      {error || queryError ? (
+        <Text style={{ color: theme.colors.error, marginTop: 14 }}>{error || queryError}</Text>
+      ) : null}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 56,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 48,
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '600',
-  },
-  sub: {
-    marginTop: 12,
-    opacity: 0.7,
-  },
-  section: {
-    marginTop: 28,
-    marginBottom: 8,
-    fontWeight: '600',
-  },
-  hint: {
-    marginTop: 8,
-    opacity: 0.55,
-    fontSize: 12,
-  },
-  button: {
-    marginTop: 20,
-    backgroundColor: '#1a1612',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
+  avatarBlock: {
     alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 8,
+    gap: 4,
   },
-  disabled: {
-    opacity: 0.45,
+  avatarImg: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
+  sectionLabel: {
+    marginBottom: 8,
+    letterSpacing: 0.6,
   },
-  secondary: {
-    marginTop: 12,
-  },
-  secondaryText: {
-    opacity: 0.7,
-  },
-  input: {
-    marginTop: 12,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  row: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 4,
-  },
-  rowActive: {
-    backgroundColor: '#1a1612',
-  },
-  rowTextActive: {
-    color: '#fff',
-  },
-  err: {
+  addHouseLink: {
     marginTop: 16,
-    color: '#9b1c1c',
+    alignSelf: 'flex-end',
+    paddingVertical: 4,
+  },
+  addHouseBox: {
+    marginTop: 12,
+    opacity: 0.9,
+  },
+  addHouseActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 4,
   },
 });

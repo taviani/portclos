@@ -1,22 +1,21 @@
 import { SymbolView } from 'expo-symbols';
 import { Redirect, Tabs } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator } from 'react-native';
+import { View } from 'react-native';
+import { ActivityIndicator } from 'react-native-paper';
 
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
-import { View } from '@/components/Themed';
 import { useSession } from '@/providers/SessionProvider';
+import { useAppTheme } from '@/theme/paper';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const theme = useAppTheme();
   const { token, ready } = useSession();
 
   if (!ready) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background }}>
+        <ActivityIndicator animating color={theme.colors.primary} />
       </View>
     );
   }
@@ -28,7 +27,15 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme].tint,
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.outline,
+        tabBarStyle: {
+          backgroundColor: theme.colors.surface,
+          borderTopColor: theme.colors.outlineVariant,
+        },
+        headerStyle: { backgroundColor: theme.colors.background },
+        headerTintColor: theme.colors.onBackground,
+        headerShadowVisible: false,
         headerShown: useClientOnlyValue(false, true),
       }}>
       <Tabs.Screen

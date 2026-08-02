@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 
 import { useAppTheme } from '@/theme/paper';
 
-export default function MaisonLayout() {
+export default function AideLayout() {
   const theme = useAppTheme();
 
   return (
@@ -15,11 +15,8 @@ export default function MaisonLayout() {
         contentStyle: { backgroundColor: theme.colors.background },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Maison' }} />
-      <Stack.Screen name="blog" options={{ headerShown: false }} />
-      <Stack.Screen name="presences" options={{ title: 'Présences' }} />
-      <Stack.Screen name="fermeture" options={{ headerShown: false }} />
-      <Stack.Screen name="aide" options={{ headerShown: false }} />
+      <Stack.Screen name="index" options={{ title: 'Aide' }} />
+      <Stack.Screen name="[articleId]" options={{ title: 'Fiche' }} />
     </Stack>
   );
 }
