@@ -38,11 +38,11 @@ go run ./cmd/server
 - `GET /houses/{id}` — member-only
 - `GET|POST /houses/{id}/occupations` — occupation ranges (`from`/`to` or body `start_date`/`end_date`)
 - `DELETE /occupations/{id}` — delete own occupation
-- `GET|POST /houses/{id}/closing-checklist/items` — closing checklist template (optional / requires_photo)
+- `GET|POST /houses/{id}/closing-checklist/items` — closing checklist template (optional items + hint photos)
 - `PATCH|DELETE /closing-checklist/items/{itemId}`
+- `POST /closing-checklist/items/{itemId}/photos` — indication photo (multipart `photo`) · `GET|DELETE /closing-photos/{id}`
 - `GET|POST /houses/{id}/closings` — list / start a closing run (one open per house)
 - `GET /closings/{id}` · `PATCH /closings/{id}/items/{itemId}` · `POST /closings/{id}/complete`
-- `POST /closings/{id}/items/{itemId}/photos` — multipart field `photo` · `GET|DELETE /closing-photos/{id}`
 
 ## Local mobile
 

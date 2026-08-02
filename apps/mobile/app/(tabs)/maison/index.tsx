@@ -90,7 +90,7 @@ export default function MaisonHubScreen() {
         />
         <MenuRow
           title="Fermeture"
-          subtitle="Checklist de départ, tâches et photos"
+          subtitle="Checklist de départ et indications"
           onPress={() => router.push('/(tabs)/maison/fermeture')}
         />
       </View>

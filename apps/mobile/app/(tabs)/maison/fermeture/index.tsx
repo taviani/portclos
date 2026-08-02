@@ -32,7 +32,8 @@ export default function FermetureHomeScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.lead}>
-        Checklist de départ : tâches requises et optionnelles, avec photos si besoin.
+        Checklist de départ : tâches requises et optionnelles. Les photos du modèle servent
+        d’indication (où agir), pas de preuve.
       </Text>
 
       {open ? (
