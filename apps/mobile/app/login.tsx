@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-} from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import { Redirect } from 'expo-router';
+import { ActivityIndicator, Button, Text } from 'react-native-paper';
 
-import { Text, View } from '@/components/Themed';
 import {
   authClientId,
   discovery,
@@ -16,8 +12,10 @@ import {
   redirectUri,
 } from '@/lib/auth';
 import { useSession } from '@/providers/SessionProvider';
+import { useAppTheme } from '@/theme/paper';
 
 export default function LoginScreen() {
+  const theme = useAppTheme();
   const { token, ready, setSessionToken } = useSession();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,8 +89,8 @@ export default function LoginScreen() {
 
   if (!ready) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
+      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator animating color={theme.colors.primary} />
       </View>
     );
   }
@@ -102,28 +100,49 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Connexion</Text>
-      <Pressable
-        style={[styles.button, (!request || busy) && styles.disabled]}
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <Text
+        variant="displaySmall"
+        style={{ color: theme.colors.primary, fontWeight: '800', letterSpacing: -1 }}
+      >
+        Portclos
+      </Text>
+      <Text
+        variant="headlineSmall"
+        style={{ color: theme.colors.onBackground, fontWeight: '700', marginTop: 8 }}
+      >
+        Connexion
+      </Text>
+      <Text
+        variant="bodyLarge"
+        style={{ color: theme.colors.onSurfaceVariant, marginTop: 10, marginBottom: 28, lineHeight: 24 }}
+      >
+        Accède à ta maison partagée.
+      </Text>
+      <Button
+        mode="contained"
+        icon="login"
         onPress={onLogin}
         disabled={!request || busy}
+        loading={busy}
+        contentStyle={{ minHeight: 52 }}
+        style={{ borderRadius: 16 }}
       >
-        {busy ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Se connecter</Text>
-        )}
-      </Pressable>
+        Se connecter
+      </Button>
       {__DEV__ ? (
-        <Pressable style={styles.secondary} onPress={onLocalDev} disabled={busy}>
-          <Text style={styles.secondaryText}>Mode local (AUTH_DISABLED)</Text>
-        </Pressable>
+        <Button mode="text" onPress={onLocalDev} disabled={busy} style={{ marginTop: 12 }}>
+          Mode local (AUTH_DISABLED)
+        </Button>
       ) : null}
       {__DEV__ && redirect ? (
-        <Text style={styles.hint}>redirect: {redirect}</Text>
+        <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 16 }}>
+          redirect: {redirect}
+        </Text>
       ) : null}
-      {error ? <Text style={styles.err}>{error}</Text> : null}
+      {error ? (
+        <Text style={{ color: theme.colors.error, marginTop: 16 }}>{error}</Text>
+      ) : null}
     </View>
   );
 }
@@ -131,47 +150,12 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: 28,
     justifyContent: 'center',
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  button: {
-    marginTop: 20,
-    backgroundColor: '#1a1612',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  disabled: {
-    opacity: 0.45,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  secondary: {
-    marginTop: 16,
-  },
-  secondaryText: {
-    opacity: 0.7,
-  },
-  hint: {
-    marginTop: 12,
-    opacity: 0.55,
-    fontSize: 12,
-  },
-  err: {
-    marginTop: 16,
-    color: '#9b1c1c',
   },
 });

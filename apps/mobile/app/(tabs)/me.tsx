@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  TextInput,
-} from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
+import {
+  ActivityIndicator,
+  Button,
+  List,
+  Text,
+  TextInput,
+} from 'react-native-paper';
 
-import { Text, View, useThemeColor } from '@/components/Themed';
 import {
   useCreateHouse,
   useCurrentHouseId,
@@ -19,13 +20,10 @@ import {
 import { setCurrentHouseId } from '@/lib/auth';
 import { queryKeys } from '@/lib/queryKeys';
 import { useSession } from '@/providers/SessionProvider';
+import { useAppTheme } from '@/theme/paper';
 
 export default function MeScreen() {
-  const inputColor = useThemeColor({}, 'text');
-  const inputBorder = useThemeColor({ light: '#ccc', dark: '#555' }, 'text');
-  const inputBg = useThemeColor({ light: '#fff', dark: '#1c1c1e' }, 'background');
-  const placeholderColor = useThemeColor({ light: '#888', dark: '#8e8e93' }, 'text');
-
+  const theme = useAppTheme();
   const { token, ready, signOut } = useSession();
   const qc = useQueryClient();
   const me = useMe();
@@ -79,8 +77,8 @@ export default function MeScreen() {
 
   if (!ready) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
+      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator animating color={theme.colors.primary} />
       </View>
     );
   }
@@ -90,133 +88,118 @@ export default function MeScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Compte</Text>
-      <Text style={styles.sub}>{email ?? '…'}</Text>
-      <Pressable style={styles.secondary} onPress={() => void signOut()}>
-        <Text style={styles.secondaryText}>Se déconnecter</Text>
-      </Pressable>
+    <ScrollView
+      style={{ backgroundColor: theme.colors.background }}
+      contentContainerStyle={styles.container}
+    >
+      <Text
+        variant="headlineMedium"
+        style={{ color: theme.colors.onBackground, fontWeight: '800', letterSpacing: -0.4 }}
+      >
+        Compte
+      </Text>
+      <Text
+        variant="bodyLarge"
+        style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}
+      >
+        {email ?? '…'}
+      </Text>
+      <Button
+        mode="text"
+        icon="logout"
+        onPress={() => void signOut()}
+        style={{ alignSelf: 'flex-start', marginTop: 4 }}
+        textColor={theme.colors.error}
+      >
+        Se déconnecter
+      </Button>
 
-      <Text style={styles.section}>Maisons</Text>
+      <Text
+        variant="labelLarge"
+        style={{
+          marginTop: 28,
+          marginBottom: 8,
+          color: theme.colors.onSurfaceVariant,
+          letterSpacing: 0.6,
+        }}
+      >
+        MAISONS
+      </Text>
       {houses.isLoading ? (
-        <ActivityIndicator />
+        <ActivityIndicator animating color={theme.colors.primary} />
       ) : (houses.data?.length ?? 0) === 0 ? (
-        <Text style={styles.hint}>Aucune maison — crée la première.</Text>
+        <Text style={{ color: theme.colors.outline }}>Aucune maison — crée la première.</Text>
       ) : (
         houses.data!.map((h) => {
           const active = h.id === currentHouseId.data;
           return (
-            <Pressable
+            <List.Item
               key={h.id}
-              style={[styles.row, active && styles.rowActive]}
+              title={h.name}
+              description={h.role}
               onPress={() => void onSelectHouse(h.id)}
-            >
-              <Text style={active ? styles.rowTextActive : undefined}>
-                {h.name} ({h.role})
-              </Text>
-            </Pressable>
+              left={(props) => (
+                <List.Icon
+                  {...props}
+                  icon={active ? 'home' : 'home-outline'}
+                  color={active ? theme.colors.primary : theme.colors.onSurfaceVariant}
+                />
+              )}
+              right={
+                active
+                  ? (props) => <List.Icon {...props} icon="check" color={theme.colors.primary} />
+                  : undefined
+              }
+              style={{
+                backgroundColor: active
+                  ? theme.colors.primaryContainer
+                  : theme.colors.elevation.level1,
+                borderRadius: theme.roundness,
+                marginBottom: 8,
+              }}
+              titleStyle={{
+                fontWeight: '700',
+                color: active ? theme.colors.onPrimaryContainer : theme.colors.onSurface,
+              }}
+            />
           );
         })
       )}
 
       <TextInput
-        style={[
-          styles.input,
-          {
-            color: inputColor,
-            borderColor: inputBorder,
-            backgroundColor: inputBg,
-          },
-        ]}
-        placeholder="Nom de la maison"
-        placeholderTextColor={placeholderColor}
+        mode="outlined"
+        label="Nom de la maison"
         value={newHouse}
         onChangeText={setNewHouse}
-        keyboardAppearance="default"
+        style={{ marginTop: 12, backgroundColor: theme.colors.surface }}
       />
-      <Pressable
-        style={[styles.button, mutating && styles.disabled]}
+      <Button
+        mode="contained"
+        icon="plus"
         onPress={() => void onCreateHouse()}
         disabled={mutating || !newHouse.trim()}
+        loading={createHouse.isPending}
+        style={{ marginTop: 14, borderRadius: 14 }}
+        contentStyle={{ minHeight: 48 }}
       >
-        <Text style={styles.buttonText}>Créer une maison</Text>
-      </Pressable>
-      {error || queryError ? <Text style={styles.err}>{error || queryError}</Text> : null}
-    </View>
+        Créer une maison
+      </Button>
+      {error || queryError ? (
+        <Text style={{ color: theme.colors.error, marginTop: 14 }}>{error || queryError}</Text>
+      ) : null}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 56,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 48,
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '600',
-  },
-  sub: {
-    marginTop: 12,
-    opacity: 0.7,
-  },
-  section: {
-    marginTop: 28,
-    marginBottom: 8,
-    fontWeight: '600',
-  },
-  hint: {
-    marginTop: 8,
-    opacity: 0.55,
-    fontSize: 12,
-  },
-  button: {
-    marginTop: 20,
-    backgroundColor: '#1a1612',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  disabled: {
-    opacity: 0.45,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  secondary: {
-    marginTop: 12,
-  },
-  secondaryText: {
-    opacity: 0.7,
-  },
-  input: {
-    marginTop: 12,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  row: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 4,
-  },
-  rowActive: {
-    backgroundColor: '#1a1612',
-  },
-  rowTextActive: {
-    color: '#fff',
-  },
-  err: {
-    marginTop: 16,
-    color: '#9b1c1c',
   },
 });

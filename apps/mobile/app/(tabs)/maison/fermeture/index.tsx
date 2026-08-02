@@ -1,11 +1,16 @@
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
+import {
+  ActivityIndicator,
+  Button,
+  Card,
+  List,
+  Text,
+} from 'react-native-paper';
 
-import { PrimaryButton } from '@/components/PrimaryButton';
-import { Text, View, useThemeColor } from '@/components/Themed';
-import { Brand } from '@/constants/Brand';
 import { useClosings, useStartClosing } from '@/hooks/useClosing';
 import { useCurrentHouse } from '@/hooks/useHouses';
+import { useAppTheme } from '@/theme/paper';
 
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString('fr-FR', {
@@ -18,25 +23,25 @@ function formatWhen(iso: string): string {
 }
 
 export default function FermetureHomeScreen() {
-  const surface = useThemeColor({ light: Brand.surface, dark: '#1c1c1e' }, 'background');
-  const line = useThemeColor({ light: Brand.line, dark: '#333' }, 'text');
-
+  const theme = useAppTheme();
   const { house, isLoading } = useCurrentHouse();
   const closings = useClosings(house?.id);
   const start = useStartClosing(house?.id);
 
   if (isLoading || closings.isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={Brand.ink} />
+      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator animating color={theme.colors.primary} />
       </View>
     );
   }
 
   if (!house) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.sub}>Choisis une maison dans Compte.</Text>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <Text style={{ color: theme.colors.onSurfaceVariant }}>
+          Choisis une maison dans Compte.
+        </Text>
       </View>
     );
   }
@@ -64,69 +69,102 @@ export default function FermetureHomeScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.heading}>Avant de partir</Text>
-      <Text style={styles.lead}>
+    <ScrollView
+      style={{ backgroundColor: theme.colors.background }}
+      contentContainerStyle={styles.container}
+    >
+      <Text
+        variant="headlineMedium"
+        style={{ color: theme.colors.onBackground, fontWeight: '800', letterSpacing: -0.4 }}
+      >
+        Avant de partir
+      </Text>
+      <Text
+        variant="bodyLarge"
+        style={{ color: theme.colors.onSurfaceVariant, marginTop: 8, marginBottom: 20, lineHeight: 24 }}
+      >
         Passe la checklist. Les photos du modèle montrent où agir.
       </Text>
 
-      <View style={[styles.hero, { backgroundColor: surface }]}>
-        {open ? (
-          <>
-            <Text style={styles.heroLabel}>Fermeture en cours</Text>
-            <Text style={styles.heroMeta}>Commencée {formatWhen(open.started_at)}</Text>
-            <PrimaryButton
-              label="Reprendre"
-              onPress={beginOrResume}
-              style={styles.heroBtn}
-            />
-          </>
-        ) : (
-          <>
-            <Text style={styles.heroLabel}>Prêt à fermer ?</Text>
-            <Text style={styles.heroMeta}>Une checklist claire, étape par étape.</Text>
-            <PrimaryButton
-              label="Commencer"
-              onPress={beginOrResume}
-              busy={start.isPending}
-              style={styles.heroBtn}
-            />
-          </>
-        )}
-      </View>
+      <Card mode="contained" style={{ backgroundColor: theme.colors.primaryContainer }}>
+        <Card.Content style={{ paddingVertical: 8 }}>
+          <Text
+            variant="titleLarge"
+            style={{ color: theme.colors.onPrimaryContainer, fontWeight: '700' }}
+          >
+            {open ? 'Fermeture en cours' : 'Prêt à fermer ?'}
+          </Text>
+          <Text
+            variant="bodyMedium"
+            style={{ color: theme.colors.onPrimaryContainer, opacity: 0.85, marginTop: 6 }}
+          >
+            {open
+              ? `Commencée ${formatWhen(open.started_at)}`
+              : 'Une checklist claire, étape par étape.'}
+          </Text>
+        </Card.Content>
+        <Card.Actions style={{ paddingBottom: 12, paddingHorizontal: 12 }}>
+          <Button
+            mode="contained"
+            icon={open ? 'play' : 'play-circle'}
+            loading={start.isPending}
+            onPress={beginOrResume}
+            buttonColor={theme.colors.primary}
+            textColor={theme.colors.onPrimary}
+            contentStyle={{ minHeight: 48 }}
+            style={{ borderRadius: 14, flex: 1 }}
+          >
+            {open ? 'Reprendre' : 'Commencer'}
+          </Button>
+        </Card.Actions>
+      </Card>
 
-      <PrimaryButton
-        variant="ghost"
-        label="Modifier le modèle"
+      <Button
+        mode="outlined"
+        icon="pencil-outline"
         onPress={() => router.push('/(tabs)/maison/fermeture/modele')}
         style={styles.modelBtn}
-      />
+        contentStyle={{ minHeight: 48 }}
+      >
+        Modifier le modèle
+      </Button>
 
       {start.error ? (
-        <Text style={styles.err}>
+        <Text style={{ color: theme.colors.error, marginTop: 12 }}>
           {start.error instanceof Error ? start.error.message : 'Erreur'}
         </Text>
       ) : null}
 
-      <Text style={styles.section}>Récentes</Text>
+      <Text
+        variant="labelLarge"
+        style={{
+          marginTop: 32,
+          marginBottom: 4,
+          color: theme.colors.onSurfaceVariant,
+          letterSpacing: 0.6,
+        }}
+      >
+        RÉCENTES
+      </Text>
       {recent.length === 0 ? (
-        <Text style={styles.hint}>Pas encore de fermeture terminée.</Text>
+        <Text variant="bodyMedium" style={{ color: theme.colors.outline, marginTop: 8 }}>
+          Pas encore de fermeture terminée.
+        </Text>
       ) : (
         recent.map((c) => (
-          <Pressable
+          <List.Item
             key={c.id}
+            title="Terminée"
+            description={formatWhen(c.completed_at ?? c.started_at)}
+            left={(props) => <List.Icon {...props} icon="check-circle" color={theme.colors.primary} />}
+            right={(props) => <List.Icon {...props} icon="chevron-right" />}
             onPress={() => router.push(`/(tabs)/maison/fermeture/${c.id}`)}
-            style={({ pressed }) => [
-              styles.row,
-              { borderBottomColor: line, opacity: pressed ? 0.6 : 1 },
-            ]}
-          >
-            <View>
-              <Text style={styles.rowTitle}>Terminée</Text>
-              <Text style={styles.rowMeta}>{formatWhen(c.completed_at ?? c.started_at)}</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
+            style={{
+              backgroundColor: theme.colors.elevation.level1,
+              borderRadius: theme.roundness,
+              marginTop: 8,
+            }}
+          />
         ))
       )}
     </ScrollView>
@@ -135,7 +173,7 @@ export default function FermetureHomeScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 48,
   },
@@ -144,78 +182,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heading: {
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.6,
-  },
-  lead: {
-    marginTop: 8,
-    marginBottom: 22,
-    fontSize: 16,
-    lineHeight: 23,
-    opacity: 0.62,
-  },
-  hero: {
-    borderRadius: 20,
-    padding: 20,
-  },
-  heroLabel: {
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-  heroMeta: {
-    marginTop: 6,
-    fontSize: 14,
-    opacity: 0.55,
-    lineHeight: 20,
-  },
-  heroBtn: {
-    marginTop: 18,
-  },
   modelBtn: {
     marginTop: 12,
-  },
-  section: {
-    marginTop: 36,
-    marginBottom: 4,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    opacity: 0.45,
-  },
-  hint: {
-    marginTop: 10,
-    opacity: 0.5,
-    fontSize: 14,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  rowTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  rowMeta: {
-    marginTop: 3,
-    fontSize: 13,
-    opacity: 0.5,
-  },
-  chevron: {
-    opacity: 0.3,
-    fontSize: 22,
-  },
-  sub: {
-    opacity: 0.7,
-  },
-  err: {
-    marginTop: 12,
-    color: Brand.danger,
+    borderRadius: 14,
   },
 });

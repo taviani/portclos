@@ -1,22 +1,15 @@
 import { useCallback, useLayoutEffect } from 'react';
-import {
-  ActionSheetIOS,
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
-  StyleSheet,
-} from 'react-native';
+import { ActionSheetIOS, Alert, Platform, StyleSheet, View } from 'react-native';
 import { router, useNavigation } from 'expo-router';
+import { Appbar, Button, Text, ActivityIndicator } from 'react-native-paper';
 
 import { MenuRow } from '@/components/MenuRow';
-import { PrimaryButton } from '@/components/PrimaryButton';
-import { Text, View } from '@/components/Themed';
-import { Brand } from '@/constants/Brand';
 import { useCurrentHouse } from '@/hooks/useHouses';
 import { useSession } from '@/providers/SessionProvider';
+import { useAppTheme } from '@/theme/paper';
 
 export default function MaisonHubScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation();
   const { signOut } = useSession();
   const { house, isLoading, error } = useCurrentHouse();
@@ -50,58 +43,86 @@ export default function MaisonHubScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       title: house?.name ?? 'Maison',
+      headerStyle: { backgroundColor: theme.colors.background },
+      headerTintColor: theme.colors.onBackground,
+      headerShadowVisible: false,
       headerRight: () => (
-        <Pressable onPress={openMenu} hitSlop={12} style={styles.headerBtn}>
-          <Text style={styles.headerBtnText}>⋯</Text>
-        </Pressable>
+        <Appbar.Action icon="dots-horizontal" onPress={openMenu} accessibilityLabel="Menu" />
       ),
     });
-  }, [navigation, house?.name, openMenu]);
+  }, [navigation, house?.name, openMenu, theme.colors.background, theme.colors.onBackground]);
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={Brand.ink} />
+      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator animating color={theme.colors.primary} />
       </View>
     );
   }
 
   if (!house) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.emptyTitle}>Aucune maison</Text>
-        <Text style={styles.emptySub}>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <Text variant="headlineSmall" style={{ color: theme.colors.onBackground, fontWeight: '700' }}>
+          Aucune maison
+        </Text>
+        <Text
+          variant="bodyLarge"
+          style={{ color: theme.colors.onSurfaceVariant, marginTop: 8, lineHeight: 24 }}
+        >
           Choisis ou crée une maison dans Compte pour commencer.
         </Text>
-        <PrimaryButton
-          label="Ouvrir Compte"
+        <Button
+          mode="contained"
+          icon="account"
           onPress={() => router.push('/(tabs)/me')}
-          style={styles.emptyBtn}
-        />
-        {error ? <Text style={styles.err}>{error.message}</Text> : null}
+          style={styles.cta}
+          contentStyle={styles.ctaContent}
+        >
+          Ouvrir Compte
+        </Button>
+        {error ? (
+          <Text style={{ color: theme.colors.error, marginTop: 16 }}>{error.message}</Text>
+        ) : null}
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.kicker}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <Text
+        variant="labelLarge"
+        style={{ color: theme.colors.primary, letterSpacing: 0.6, textTransform: 'uppercase' }}
+      >
         {house.role === 'owner' ? 'Propriétaire' : 'Membre'}
       </Text>
-      <Text style={styles.heading}>Que veux-tu faire ?</Text>
-      <View style={styles.menu}>
-        <MenuRow
-          title="Présences"
-          subtitle="Qui est là, et quand"
-          onPress={() => router.push('/(tabs)/maison/presences')}
-        />
-        <MenuRow
-          title="Fermeture"
-          subtitle="Checklist avant de partir"
-          onPress={() => router.push('/(tabs)/maison/fermeture')}
-        />
-      </View>
-      {error ? <Text style={styles.err}>{error.message}</Text> : null}
+      <Text
+        variant="headlineMedium"
+        style={{
+          color: theme.colors.onBackground,
+          fontWeight: '800',
+          marginTop: 4,
+          marginBottom: 20,
+          letterSpacing: -0.4,
+        }}
+      >
+        Que veux-tu faire ?
+      </Text>
+      <MenuRow
+        title="Présences"
+        subtitle="Qui est là, et quand"
+        icon="calendar-month"
+        onPress={() => router.push('/(tabs)/maison/presences')}
+      />
+      <MenuRow
+        title="Fermeture"
+        subtitle="Checklist avant de partir"
+        icon="clipboard-check-outline"
+        onPress={() => router.push('/(tabs)/maison/fermeture')}
+      />
+      {error ? (
+        <Text style={{ color: theme.colors.error, marginTop: 16 }}>{error.message}</Text>
+      ) : null}
     </View>
   );
 }
@@ -109,55 +130,19 @@ export default function MaisonHubScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 22,
-    paddingTop: 12,
+    paddingHorizontal: 20,
+    paddingTop: 8,
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  kicker: {
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    opacity: 0.45,
-  },
-  heading: {
-    marginTop: 6,
-    marginBottom: 22,
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.6,
-  },
-  menu: {
-    marginTop: 4,
-  },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.4,
-  },
-  emptySub: {
-    marginTop: 10,
-    opacity: 0.65,
-    lineHeight: 22,
-    fontSize: 16,
-  },
-  emptyBtn: {
+  cta: {
     marginTop: 28,
-    alignSelf: 'stretch',
+    borderRadius: 14,
   },
-  headerBtn: {
-    paddingHorizontal: 8,
-  },
-  headerBtnText: {
-    fontSize: 22,
-    fontWeight: '600',
-  },
-  err: {
-    marginTop: 16,
-    color: Brand.danger,
+  ctaContent: {
+    minHeight: 52,
   },
 });
