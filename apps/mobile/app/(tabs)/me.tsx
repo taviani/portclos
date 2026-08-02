@@ -5,7 +5,7 @@ import {
   StyleSheet,
   TextInput,
 } from 'react-native';
-import * as AuthSession from 'expo-auth-session';
+import { Redirect } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { Text, View, useThemeColor } from '@/components/Themed';
@@ -16,14 +16,7 @@ import {
   useMe,
   useSelectHouse,
 } from '@/hooks/useHouses';
-import {
-  authClientId,
-  discovery,
-  exchangeCodeForToken,
-  isAuthConfigured,
-  redirectUri,
-  setCurrentHouseId,
-} from '@/lib/auth';
+import { setCurrentHouseId } from '@/lib/auth';
 import { queryKeys } from '@/lib/queryKeys';
 import { useSession } from '@/providers/SessionProvider';
 
@@ -33,7 +26,7 @@ export default function MeScreen() {
   const inputBg = useThemeColor({ light: '#fff', dark: '#1c1c1e' }, 'background');
   const placeholderColor = useThemeColor({ light: '#888', dark: '#8e8e93' }, 'text');
 
-  const { token, ready, setSessionToken, signOut } = useSession();
+  const { token, ready, signOut } = useSession();
   const qc = useQueryClient();
   const me = useMe();
   const houses = useHouses();
@@ -42,24 +35,7 @@ export default function MeScreen() {
   const selectHouse = useSelectHouse();
 
   const [newHouse, setNewHouse] = useState('');
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [redirect, setRedirect] = useState('');
-
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: authClientId(),
-      redirectUri: redirect || redirectUri(),
-      scopes: ['openid', 'email'],
-      usePKCE: true,
-      responseType: AuthSession.ResponseType.Code,
-    },
-    discovery(),
-  );
-
-  useEffect(() => {
-    setRedirect(redirectUri());
-  }, []);
 
   useEffect(() => {
     if (!token || !houses.data?.length || currentHouseId.data) {
@@ -71,57 +47,6 @@ export default function MeScreen() {
       await qc.invalidateQueries({ queryKey: queryKeys.currentHouseId });
     })();
   }, [token, houses.data, currentHouseId.data, qc]);
-
-  useEffect(() => {
-    if (response?.type !== 'success' || !request?.codeVerifier) {
-      return;
-    }
-    const code = response.params.code;
-    if (!code) {
-      setError('missing authorization code');
-      return;
-    }
-    void (async () => {
-      setBusy(true);
-      setError(null);
-      try {
-        const accessToken = await exchangeCodeForToken({
-          code,
-          codeVerifier: request.codeVerifier!,
-        });
-        await setSessionToken(accessToken);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'login failed');
-      } finally {
-        setBusy(false);
-      }
-    })();
-  }, [response, request, setSessionToken]);
-
-  const onLogin = useCallback(async () => {
-    setError(null);
-    try {
-      if (!isAuthConfigured()) {
-        setError('Configure EXPO_PUBLIC_AUTH_ISSUER in apps/mobile/.env');
-        return;
-      }
-      await promptAsync();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'login failed');
-    }
-  }, [promptAsync]);
-
-  const onLocalDev = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await setSessionToken('local-dev');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'local mode failed');
-    } finally {
-      setBusy(false);
-    }
-  }, [setSessionToken]);
 
   const onCreateHouse = useCallback(async () => {
     if (!newHouse.trim()) return;
@@ -146,7 +71,7 @@ export default function MeScreen() {
   );
 
   const email = me.data?.email || me.data?.sub || null;
-  const mutating = busy || createHouse.isPending || selectHouse.isPending;
+  const mutating = createHouse.isPending || selectHouse.isPending;
   const queryError =
     (me.error instanceof Error && me.error.message) ||
     (houses.error instanceof Error && houses.error.message) ||
@@ -160,83 +85,62 @@ export default function MeScreen() {
     );
   }
 
+  if (!token) {
+    return <Redirect href="/login" />;
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Compte</Text>
-      {!token ? (
-        <>
-          <Text style={styles.sub}>Connexion OIDC (invite-only + PKCE).</Text>
-          <Pressable
-            style={[styles.button, (!request || busy) && styles.disabled]}
-            onPress={onLogin}
-            disabled={!request || busy}
-          >
-            {busy ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Se connecter</Text>
-            )}
-          </Pressable>
-          {__DEV__ ? (
-            <Pressable style={styles.secondary} onPress={onLocalDev} disabled={busy}>
-              <Text style={styles.secondaryText}>Mode local (AUTH_DISABLED)</Text>
-            </Pressable>
-          ) : null}
-          {redirect ? <Text style={styles.hint}>redirect: {redirect}</Text> : null}
-        </>
+      <Text style={styles.sub}>{email ?? '…'}</Text>
+      <Pressable style={styles.secondary} onPress={() => void signOut()}>
+        <Text style={styles.secondaryText}>Se déconnecter</Text>
+      </Pressable>
+
+      <Text style={styles.section}>Maisons</Text>
+      {houses.isLoading ? (
+        <ActivityIndicator />
+      ) : (houses.data?.length ?? 0) === 0 ? (
+        <Text style={styles.hint}>Aucune maison — crée la première.</Text>
       ) : (
-        <>
-          <Text style={styles.sub}>{email ?? '…'}</Text>
-          <Pressable style={styles.secondary} onPress={() => void signOut()}>
-            <Text style={styles.secondaryText}>Se déconnecter</Text>
-          </Pressable>
-
-          <Text style={styles.section}>Maisons</Text>
-          {houses.isLoading ? (
-            <ActivityIndicator />
-          ) : (houses.data?.length ?? 0) === 0 ? (
-            <Text style={styles.hint}>Aucune maison — crée la première.</Text>
-          ) : (
-            houses.data!.map((h) => {
-              const active = h.id === currentHouseId.data;
-              return (
-                <Pressable
-                  key={h.id}
-                  style={[styles.row, active && styles.rowActive]}
-                  onPress={() => void onSelectHouse(h.id)}
-                >
-                  <Text style={active ? styles.rowTextActive : undefined}>
-                    {h.name} ({h.role})
-                  </Text>
-                </Pressable>
-              );
-            })
-          )}
-
-          <TextInput
-            style={[
-              styles.input,
-              {
-                color: inputColor,
-                borderColor: inputBorder,
-                backgroundColor: inputBg,
-              },
-            ]}
-            placeholder="Nom de la maison"
-            placeholderTextColor={placeholderColor}
-            value={newHouse}
-            onChangeText={setNewHouse}
-            keyboardAppearance="default"
-          />
-          <Pressable
-            style={[styles.button, mutating && styles.disabled]}
-            onPress={() => void onCreateHouse()}
-            disabled={mutating || !newHouse.trim()}
-          >
-            <Text style={styles.buttonText}>Créer une maison</Text>
-          </Pressable>
-        </>
+        houses.data!.map((h) => {
+          const active = h.id === currentHouseId.data;
+          return (
+            <Pressable
+              key={h.id}
+              style={[styles.row, active && styles.rowActive]}
+              onPress={() => void onSelectHouse(h.id)}
+            >
+              <Text style={active ? styles.rowTextActive : undefined}>
+                {h.name} ({h.role})
+              </Text>
+            </Pressable>
+          );
+        })
       )}
+
+      <TextInput
+        style={[
+          styles.input,
+          {
+            color: inputColor,
+            borderColor: inputBorder,
+            backgroundColor: inputBg,
+          },
+        ]}
+        placeholder="Nom de la maison"
+        placeholderTextColor={placeholderColor}
+        value={newHouse}
+        onChangeText={setNewHouse}
+        keyboardAppearance="default"
+      />
+      <Pressable
+        style={[styles.button, mutating && styles.disabled]}
+        onPress={() => void onCreateHouse()}
+        disabled={mutating || !newHouse.trim()}
+      >
+        <Text style={styles.buttonText}>Créer une maison</Text>
+      </Pressable>
       {error || queryError ? <Text style={styles.err}>{error || queryError}</Text> : null}
     </View>
   );
