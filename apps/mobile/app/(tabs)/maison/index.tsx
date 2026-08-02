@@ -10,7 +10,9 @@ import {
 import { router, useNavigation } from 'expo-router';
 
 import { MenuRow } from '@/components/MenuRow';
+import { PrimaryButton } from '@/components/PrimaryButton';
 import { Text, View } from '@/components/Themed';
+import { Brand } from '@/constants/Brand';
 import { useCurrentHouse } from '@/hooks/useHouses';
 import { useSession } from '@/providers/SessionProvider';
 
@@ -59,7 +61,7 @@ export default function MaisonHubScreen() {
   if (isLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator color={Brand.ink} />
       </View>
     );
   }
@@ -67,13 +69,15 @@ export default function MaisonHubScreen() {
   if (!house) {
     return (
       <View style={styles.container}>
-        <Text style={styles.emptyTitle}>Aucune maison sélectionnée</Text>
+        <Text style={styles.emptyTitle}>Aucune maison</Text>
         <Text style={styles.emptySub}>
-          Choisis ou crée une maison dans l’onglet Compte.
+          Choisis ou crée une maison dans Compte pour commencer.
         </Text>
-        <Pressable style={styles.button} onPress={() => router.push('/(tabs)/me')}>
-          <Text style={styles.buttonText}>Ouvrir Compte</Text>
-        </Pressable>
+        <PrimaryButton
+          label="Ouvrir Compte"
+          onPress={() => router.push('/(tabs)/me')}
+          style={styles.emptyBtn}
+        />
         {error ? <Text style={styles.err}>{error.message}</Text> : null}
       </View>
     );
@@ -81,16 +85,19 @@ export default function MaisonHubScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.role}>Maison courante · {house.role}</Text>
+      <Text style={styles.kicker}>
+        {house.role === 'owner' ? 'Propriétaire' : 'Membre'}
+      </Text>
+      <Text style={styles.heading}>Que veux-tu faire ?</Text>
       <View style={styles.menu}>
         <MenuRow
           title="Présences"
-          subtitle="Calendrier et occupations"
+          subtitle="Qui est là, et quand"
           onPress={() => router.push('/(tabs)/maison/presences')}
         />
         <MenuRow
           title="Fermeture"
-          subtitle="Checklist de départ et indications"
+          subtitle="Checklist avant de partir"
           onPress={() => router.push('/(tabs)/maison/fermeture')}
         />
       </View>
@@ -102,43 +109,45 @@ export default function MaisonHubScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 20,
+    paddingHorizontal: 22,
+    paddingTop: 12,
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  role: {
-    opacity: 0.55,
+  kicker: {
     fontSize: 13,
-    marginBottom: 8,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    opacity: 0.45,
+  },
+  heading: {
+    marginTop: 6,
+    marginBottom: 22,
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.6,
   },
   menu: {
     marginTop: 4,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: -0.4,
   },
   emptySub: {
     marginTop: 10,
-    opacity: 0.7,
+    opacity: 0.65,
     lineHeight: 22,
+    fontSize: 16,
   },
-  button: {
-    marginTop: 24,
-    backgroundColor: '#1a1612',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
+  emptyBtn: {
+    marginTop: 28,
+    alignSelf: 'stretch',
   },
   headerBtn: {
     paddingHorizontal: 8,
@@ -149,6 +158,6 @@ const styles = StyleSheet.create({
   },
   err: {
     marginTop: 16,
-    color: '#9b1c1c',
+    color: Brand.danger,
   },
 });

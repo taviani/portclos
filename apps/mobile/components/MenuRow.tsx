@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet } from 'react-native';
 
 import { Text, View, useThemeColor } from '@/components/Themed';
+import { Brand } from '@/constants/Brand';
 
 type Props = {
   title: string;
@@ -9,21 +10,29 @@ type Props = {
 };
 
 export function MenuRow({ title, subtitle, onPress }: Props) {
-  const border = useThemeColor({ light: '#e5e5e5', dark: '#333' }, 'text');
+  const surface = useThemeColor(
+    { light: Brand.surface, dark: '#1c1c1e' },
+    'background',
+  );
+  const pressedBg = useThemeColor(
+    { light: Brand.surfacePressed, dark: '#2c2c2e' },
+    'background',
+  );
+  const chevron = useThemeColor({ light: Brand.inkMuted, dark: '#8e8e93' }, 'text');
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
-        { borderBottomColor: border, opacity: pressed ? 0.65 : 1 },
+        { backgroundColor: pressed ? pressedBg : surface },
       ]}
     >
       <View style={styles.copy}>
         <Text style={styles.title}>{title}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
-      <Text style={styles.chevron}>›</Text>
+      <Text style={[styles.chevron, { color: chevron }]}>›</Text>
     </Pressable>
   );
 }
@@ -32,24 +41,29 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    marginBottom: 10,
   },
   copy: {
     flex: 1,
     gap: 4,
   },
   title: {
-    fontSize: 17,
-    fontWeight: '500',
+    fontSize: 18,
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     opacity: 0.55,
+    lineHeight: 20,
   },
   chevron: {
-    fontSize: 22,
-    opacity: 0.35,
+    fontSize: 26,
+    fontWeight: '300',
     marginLeft: 12,
+    marginTop: -2,
   },
 });

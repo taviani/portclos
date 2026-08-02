@@ -7,9 +7,13 @@ import {
   View as RNView,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AuthedImage } from '@/components/AuthedImage';
-import { Text, View } from '@/components/Themed';
+import { PrimaryButton } from '@/components/PrimaryButton';
+import { ProgressBar } from '@/components/ProgressBar';
+import { Text, View, useThemeColor } from '@/components/Themed';
+import { Brand } from '@/constants/Brand';
 import {
   useClosing,
   useCompleteClosing,
@@ -18,6 +22,14 @@ import {
 import { checklistPhotoUrl, type ClosingItem } from '@/lib/api';
 
 export default function ClosingRunScreen() {
+  const insets = useSafeAreaInsets();
+  const surface = useThemeColor({ light: Brand.surface, dark: '#1c1c1e' }, 'background');
+  const surfaceDone = useThemeColor({ light: '#eef5f0', dark: '#1a2a22' }, 'background');
+  const boxBorder = useThemeColor({ light: Brand.ink, dark: '#e8e4df' }, 'text');
+  const skipBorder = useThemeColor({ light: '#b8b2a8', dark: '#666' }, 'text');
+  const footerBg = useThemeColor({ light: '#fffffff5', dark: '#000000f2' }, 'background');
+  const footerLine = useThemeColor({ light: Brand.line, dark: '#333' }, 'text');
+
   const { closingId } = useLocalSearchParams<{ closingId: string }>();
   const closing = useClosing(closingId);
   const updateItem = useUpdateClosingItem(closingId);
@@ -28,13 +40,14 @@ export default function ClosingRunScreen() {
     const items = closing.data?.items ?? [];
     const required = items.filter((i) => !i.optional);
     const doneReq = required.filter((i) => i.status === 'done').length;
-    return { doneReq, required: required.length };
+    const remaining = required.length - doneReq;
+    return { doneReq, required: required.length, remaining };
   }, [closing.data?.items]);
 
   if (closing.isLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator color={Brand.ink} />
       </View>
     );
   }
@@ -49,13 +62,14 @@ export default function ClosingRunScreen() {
 
   const detail = closing.data;
   const open = detail.status === 'open';
+  const canFinish = open && progress.remaining === 0;
 
   const setStatus = (item: ClosingItem, status: ClosingItem['status']) => {
     setError(null);
     void updateItem.mutateAsync({ itemId: item.id, status }).catch((e) => {
       const msg = e instanceof Error ? e.message : 'erreur';
       if (msg.includes('cannot_skip')) {
-        setError('Cette tâche est requise — elle ne peut pas être ignorée.');
+        setError('Cette tâche est requise.');
       } else {
         setError(msg);
       }
@@ -63,198 +77,270 @@ export default function ClosingRunScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.pad}>
-      <Text style={styles.meta}>
-        {open ? 'En cours' : 'Terminée'} · {progress.doneReq}/{progress.required} requises
-      </Text>
-
-      {detail.items.map((item) => {
-        const checked = item.status === 'done';
-        const skipped = item.status === 'skipped';
-        return (
-          <View key={item.id} style={styles.item}>
-            <Pressable
-              disabled={!open || updateItem.isPending}
-              onPress={() => setStatus(item, checked ? 'todo' : 'done')}
-              style={styles.itemHeader}
-            >
-              <RNView style={[styles.box, checked && styles.boxOn, skipped && styles.boxSkip]}>
-                <Text style={styles.boxMark}>{checked ? '✓' : skipped ? '–' : ''}</Text>
-              </RNView>
-              <View style={styles.itemCopy}>
-                <Text style={[styles.itemTitle, (checked || skipped) && styles.itemDone]}>
-                  {item.label}
-                </Text>
-                <Text style={styles.badges}>{item.optional ? 'Optionnelle' : 'Requise'}</Text>
-              </View>
-            </Pressable>
-
-            {item.photos?.length ? (
-              <ScrollView horizontal style={styles.photos} showsHorizontalScrollIndicator={false}>
-                {item.photos.map((p) => (
-                  <AuthedImage
-                    key={p.id}
-                    url={checklistPhotoUrl(p.id)}
-                    cacheKey={p.id}
-                    style={styles.photo}
-                  />
-                ))}
-              </ScrollView>
-            ) : null}
-
-            {open && item.optional ? (
-              <View style={styles.actions}>
-                {!skipped ? (
-                  <Pressable onPress={() => setStatus(item, 'skipped')}>
-                    <Text style={styles.link}>Ignorer</Text>
-                  </Pressable>
-                ) : (
-                  <Pressable onPress={() => setStatus(item, 'todo')}>
-                    <Text style={styles.link}>Réactiver</Text>
-                  </Pressable>
-                )}
-              </View>
-            ) : null}
+    <View style={styles.flex}>
+      <ScrollView
+        contentContainerStyle={[styles.pad, { paddingBottom: open ? 120 + insets.bottom : 48 }]}
+      >
+        <View style={styles.progressBlock}>
+          <View style={styles.progressRow}>
+            <Text style={styles.progressLabel}>
+              {open
+                ? progress.remaining === 0
+                  ? 'Tout est fait'
+                  : `${progress.remaining} requise${progress.remaining > 1 ? 's' : ''} restante${progress.remaining > 1 ? 's' : ''}`
+                : 'Fermeture terminée'}
+            </Text>
+            <Text style={styles.progressCount}>
+              {progress.doneReq}/{progress.required}
+            </Text>
           </View>
-        );
-      })}
+          <ProgressBar value={progress.doneReq} total={progress.required} />
+        </View>
+
+        {detail.items.map((item) => {
+          const checked = item.status === 'done';
+          const skipped = item.status === 'skipped';
+          const bg = checked ? surfaceDone : skipped ? surface : undefined;
+
+          return (
+            <View
+              key={item.id}
+              style={[styles.item, bg ? { backgroundColor: bg } : null]}
+            >
+              <Pressable
+                disabled={!open || updateItem.isPending}
+                onPress={() => setStatus(item, checked ? 'todo' : 'done')}
+                style={styles.itemHeader}
+              >
+                <RNView
+                  style={[
+                    styles.box,
+                    { borderColor: skipped ? skipBorder : boxBorder },
+                    checked && styles.boxOn,
+                    skipped && styles.boxSkip,
+                  ]}
+                >
+                  <Text style={[styles.boxMark, skipped && styles.boxMarkSkip]}>
+                    {checked ? '✓' : skipped ? '–' : ''}
+                  </Text>
+                </RNView>
+                <View style={styles.itemCopy}>
+                  <Text style={[styles.itemTitle, (checked || skipped) && styles.itemMuted]}>
+                    {item.label}
+                  </Text>
+                  {item.optional ? (
+                    <Text style={styles.optional}>Optionnelle</Text>
+                  ) : null}
+                </View>
+              </Pressable>
+
+              {item.photos?.length ? (
+                <View style={styles.hintBlock}>
+                  <Text style={styles.hintLabel}>Indication</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {item.photos.map((p) => (
+                      <AuthedImage
+                        key={p.id}
+                        url={checklistPhotoUrl(p.id)}
+                        cacheKey={p.id}
+                        style={styles.photo}
+                      />
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
+
+              {open && item.optional ? (
+                <Pressable
+                  onPress={() => setStatus(item, skipped ? 'todo' : 'skipped')}
+                  style={styles.skipBtn}
+                  hitSlop={8}
+                >
+                  <Text style={styles.skipText}>
+                    {skipped ? 'Remettre à faire' : 'Passer'}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          );
+        })}
+
+        {!open ? (
+          <Text style={styles.doneHint}>Cette fermeture est enregistrée.</Text>
+        ) : null}
+        {error ? <Text style={styles.err}>{error}</Text> : null}
+      </ScrollView>
 
       {open ? (
-        <Pressable
-          style={[styles.button, complete.isPending && styles.disabled]}
-          disabled={complete.isPending}
-          onPress={() => {
-            setError(null);
-            void complete.mutateAsync().catch((e) => {
-              const msg = e instanceof Error ? e.message : 'erreur';
-              if (msg.includes('required_pending')) {
-                setError('Termine toutes les tâches requises.');
-              } else {
-                setError(msg);
-              }
-            });
-          }}
+        <View
+          style={[
+            styles.footer,
+            {
+              paddingBottom: Math.max(insets.bottom, 16),
+              backgroundColor: footerBg,
+              borderTopColor: footerLine,
+            },
+          ]}
         >
-          <Text style={styles.buttonText}>
-            {complete.isPending ? '…' : 'Terminer la fermeture'}
-          </Text>
-        </Pressable>
-      ) : (
-        <Text style={styles.doneHint}>Fermeture enregistrée.</Text>
-      )}
-
-      {error ? <Text style={styles.err}>{error}</Text> : null}
-    </ScrollView>
+          <PrimaryButton
+            label={
+              canFinish
+                ? 'Terminer la fermeture'
+                : `Encore ${progress.remaining} requise${progress.remaining > 1 ? 's' : ''}`
+            }
+            onPress={() => {
+              setError(null);
+              void complete.mutateAsync().catch((e) => {
+                const msg = e instanceof Error ? e.message : 'erreur';
+                if (msg.includes('required_pending')) {
+                  setError('Coche d’abord toutes les tâches requises.');
+                } else {
+                  setError(msg);
+                }
+              });
+            }}
+            disabled={!canFinish}
+            busy={complete.isPending}
+          />
+        </View>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   pad: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 48,
+    paddingHorizontal: 18,
+    paddingTop: 8,
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  meta: {
-    opacity: 0.55,
-    marginBottom: 16,
+  progressBlock: {
+    marginBottom: 18,
+    gap: 10,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
+  progressLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  progressCount: {
     fontSize: 13,
+    opacity: 0.45,
+    fontWeight: '600',
   },
   item: {
+    borderRadius: 16,
     paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ccc',
+    paddingHorizontal: 14,
+    marginBottom: 8,
   },
   itemHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
+    gap: 14,
   },
   box: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: '#1a1612',
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
+    marginTop: 1,
   },
   boxOn: {
-    backgroundColor: '#1a1612',
+    backgroundColor: Brand.ink,
+    borderColor: Brand.ink,
   },
   boxSkip: {
-    borderColor: '#999',
-    backgroundColor: '#eee',
+    backgroundColor: 'transparent',
   },
   boxMark: {
-    color: '#fff',
+    color: Brand.white,
     fontWeight: '700',
-    fontSize: 14,
+    fontSize: 15,
+  },
+  boxMarkSkip: {
+    color: Brand.inkMuted,
   },
   itemCopy: {
     flex: 1,
+    paddingTop: 2,
   },
   itemTitle: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+    lineHeight: 23,
   },
-  itemDone: {
-    opacity: 0.45,
-    textDecorationLine: 'line-through',
+  itemMuted: {
+    opacity: 0.4,
   },
-  badges: {
+  optional: {
     marginTop: 4,
     fontSize: 12,
-    opacity: 0.55,
+    fontWeight: '600',
+    opacity: 0.45,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
-  photos: {
+  hintBlock: {
     marginTop: 12,
-    marginLeft: 40,
+    marginLeft: 44,
+  },
+  hintLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    opacity: 0.4,
+    marginBottom: 8,
   },
   photo: {
-    width: 84,
-    height: 84,
-    borderRadius: 8,
+    width: 96,
+    height: 96,
+    borderRadius: 12,
     marginRight: 10,
   },
-  actions: {
+  skipBtn: {
     marginTop: 10,
-    marginLeft: 40,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
+    marginLeft: 44,
+    alignSelf: 'flex-start',
   },
-  link: {
-    opacity: 0.7,
-    fontSize: 13,
-  },
-  button: {
-    marginTop: 28,
-    backgroundColor: '#1a1612',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  disabled: {
-    opacity: 0.45,
-  },
-  buttonText: {
-    color: '#fff',
+  skipText: {
+    fontSize: 14,
     fontWeight: '600',
+    opacity: 0.55,
+  },
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   doneHint: {
-    marginTop: 28,
-    opacity: 0.7,
+    marginTop: 20,
     textAlign: 'center',
+    opacity: 0.55,
+    fontSize: 15,
   },
   err: {
     marginTop: 16,
-    color: '#9b1c1c',
+    color: Brand.danger,
+    textAlign: 'center',
   },
 });
