@@ -29,17 +29,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 
 	r.Group(func(pr chi.Router) {
 		pr.Use(validator.Middleware)
-		pr.Get("/me", func(w http.ResponseWriter, r *http.Request) {
-			user, ok := auth.UserFromContext(r.Context())
-			if !ok {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]string{
-				"sub":   user.Subject,
-				"email": user.Email,
-			})
-		})
+		mountCommunityRoutes(pr, db, files)
 
 		pr.Get("/houses", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())

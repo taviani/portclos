@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect } from 'react';
 import { ActionSheetIOS, Alert, Platform, StyleSheet, View } from 'react-native';
-import { router, useNavigation } from 'expo-router';
+import { type Href, router, useNavigation } from 'expo-router';
 import { Appbar, Button, Text, ActivityIndicator } from 'react-native-paper';
 
 import { MenuRow } from '@/components/MenuRow';
@@ -109,6 +109,12 @@ export default function MaisonHubScreen() {
         Que veux-tu faire ?
       </Text>
       <MenuRow
+        title="Blog"
+        subtitle="Publier, commenter, réagir"
+        icon="newspaper-variant-outline"
+        onPress={() => router.push('/(tabs)/maison/blog' as Href)}
+      />
+      <MenuRow
         title="Présences"
         subtitle="Qui est là, et quand"
         icon="calendar-month"
@@ -119,6 +125,12 @@ export default function MaisonHubScreen() {
         subtitle="Checklist avant de partir"
         icon="clipboard-check-outline"
         onPress={() => router.push('/(tabs)/maison/fermeture')}
+      />
+      <MenuRow
+        title="Aide"
+        subtitle="Jardin, wifi, pompe…"
+        icon="help-circle-outline"
+        onPress={() => router.push('/(tabs)/maison/aide' as Href)}
       />
       {error ? (
         <Text style={{ color: theme.colors.error, marginTop: 16 }}>{error.message}</Text>

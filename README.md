@@ -33,11 +33,15 @@ go run ./cmd/server
 ```
 
 - `GET /health` — public
-- `GET /me` — requires `Authorization: Bearer <access_token>` (unless `AUTH_DISABLED=true`)
+- `GET|PATCH /me` — profile (`display_name`); requires Bearer JWT (unless `AUTH_DISABLED=true`)
+- `POST|DELETE /me/avatar` · `GET /avatars/{userSub}` — avatar image
 - `GET|POST /houses` — multi-house membership (JWT `sub`)
 - `GET /houses/{id}` — member-only
 - `GET|POST /houses/{id}/occupations` — occupation ranges (`from`/`to` or body `start_date`/`end_date`)
 - `DELETE /occupations/{id}` — delete own occupation
+- `GET|POST /houses/{id}/posts` · `GET|DELETE /posts/{id}` — house blog
+- `POST /posts/{id}/photos` · `GET /blog-photos/{id}` · `POST /posts/{id}/comments` · `PUT|DELETE /posts/{id}/reactions`
+- `GET|POST /houses/{id}/help` · `GET|PATCH|DELETE /help/{id}` · `POST /help/{id}/photos` · `GET /help-photos/{id}`
 - `GET|POST /houses/{id}/closing-checklist/items` — closing checklist template (optional items + hint photos)
 - `PATCH|DELETE /closing-checklist/items/{itemId}`
 - `POST /closing-checklist/items/{itemId}/photos` — indication photo (multipart `photo`) · `GET|DELETE /closing-photos/{id}`
