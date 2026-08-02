@@ -23,19 +23,40 @@ export function LighthouseMark({ width = 280, height = 368, glowOpacity = 1 }: P
   return (
     <Svg width={width} height={height} viewBox="0 0 320 420">
       <Defs>
-        <radialGradient id="glow" cx="160" cy="78" rx="118" ry="88" gradientUnits="userSpaceOnUse">
+        <RadialGradient
+          id="glow"
+          cx="160"
+          cy="78"
+          rx="118"
+          ry="88"
+          gradientUnits="userSpaceOnUse"
+        >
           <Stop offset="0" stopColor="#FFE08A" stopOpacity={0.95} />
           <Stop offset="0.45" stopColor="#F5C542" stopOpacity={0.35} />
           <Stop offset="1" stopColor="#F5C542" stopOpacity={0} />
-        </radialGradient>
-        <linearGradient id="rock" x1="40" y1="300" x2="280" y2="400" gradientUnits="userSpaceOnUse">
+        </RadialGradient>
+        <LinearGradient
+          id="rock"
+          x1="40"
+          y1="300"
+          x2="280"
+          y2="400"
+          gradientUnits="userSpaceOnUse"
+        >
           <Stop offset="0" stopColor="#8B4A32" />
           <Stop offset="1" stopColor="#5C2E1F" />
-        </linearGradient>
-        <linearGradient id="water" x1="160" y1="360" x2="160" y2="420" gradientUnits="userSpaceOnUse">
+        </LinearGradient>
+        <LinearGradient
+          id="water"
+          x1="160"
+          y1="360"
+          x2="160"
+          y2="420"
+          gradientUnits="userSpaceOnUse"
+        >
           <Stop offset="0" stopColor="#0B4F6C" stopOpacity={0.9} />
           <Stop offset="1" stopColor="#062C38" stopOpacity={0.2} />
-        </linearGradient>
+        </LinearGradient>
       </Defs>
 
       <Ellipse cx="160" cy="78" rx="118" ry="88" fill="url(#glow)" opacity={glowOpacity} />
