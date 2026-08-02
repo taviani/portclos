@@ -9,11 +9,10 @@ import {
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, type ReactNode } from 'react';
-import { ActivityIndicator } from 'react-native';
 import 'react-native-reanimated';
 
+import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { useColorScheme } from '@/components/useColorScheme';
-import { View } from '@/components/Themed';
 import { AppProviders } from '@/providers/AppProviders';
 import { useSession } from '@/providers/SessionProvider';
 
@@ -26,7 +25,6 @@ export const unstable_settings = {
   initialRouteName: '(tabs)',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -34,39 +32,43 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
 
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
+  return (
+    <AppProviders>
+      <SplashGate fontsLoaded={loaded}>{loaded ? <RootLayoutNav /> : null}</SplashGate>
+    </AppProviders>
+  );
+}
 
-  if (!loaded) {
-    return null;
-  }
-
-  return <RootLayoutNav />;
+function SplashGate({
+  fontsLoaded,
+  children,
+}: {
+  fontsLoaded: boolean;
+  children: ReactNode;
+}) {
+  const { ready: sessionReady } = useSession();
+  return (
+    <AnimatedSplash ready={fontsLoaded && sessionReady}>{children}</AnimatedSplash>
+  );
 }
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
   return (
-    <AppProviders>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <AuthGate>
-          <Stack>
-            <Stack.Screen name="login" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-          </Stack>
-        </AuthGate>
-      </ThemeProvider>
-    </AppProviders>
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <AuthGate>
+        <Stack>
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        </Stack>
+      </AuthGate>
+    </ThemeProvider>
   );
 }
 
@@ -75,11 +77,7 @@ function AuthGate({ children }: { children: ReactNode }) {
   const segments = useSegments();
 
   if (!ready) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator />
-      </View>
-    );
+    return null;
   }
 
   const onLogin = segments[0] === 'login';
