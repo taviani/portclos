@@ -9,6 +9,10 @@ import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { useSession } from '@/providers/SessionProvider';
 import { useAppTheme } from '@/theme/paper';
 
+export const unstable_settings = {
+  initialRouteName: 'maison',
+};
+
 export default function TabLayout() {
   const theme = useAppTheme();
   const { token, ready } = useSession();
@@ -115,6 +119,7 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen name="me" options={{ href: null }} />
     </Tabs>
   );
 }
