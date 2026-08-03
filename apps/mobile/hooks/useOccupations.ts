@@ -4,6 +4,7 @@ import {
   createOccupation,
   deleteOccupation,
   fetchOccupations,
+  updateOccupation,
   type OccupationGuest,
 } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
@@ -46,6 +47,30 @@ export function useCreateOccupation(houseId: string | undefined) {
     }) => {
       if (!token || !houseId) throw new Error('unauthorized');
       return createOccupation(token, houseId, input);
+    },
+    onSuccess: async () => {
+      if (!houseId) return;
+      await qc.invalidateQueries({
+        queryKey: ['occupations', houseId],
+      });
+    },
+  });
+}
+
+export function useUpdateOccupation(houseId: string | undefined) {
+  const { token } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      occupationId: string;
+      start_date: string;
+      end_date: string;
+      note?: string;
+      guests?: OccupationGuest[];
+    }) => {
+      if (!token) throw new Error('unauthorized');
+      const { occupationId, ...body } = input;
+      return updateOccupation(token, occupationId, body);
     },
     onSuccess: async () => {
       if (!houseId) return;

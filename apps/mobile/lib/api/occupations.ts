@@ -119,6 +119,26 @@ export async function createOccupation(
   });
 }
 
+export async function updateOccupation(
+  accessToken: string,
+  occupationId: string,
+  input: {
+    start_date: string;
+    end_date: string;
+    note?: string;
+    guests?: OccupationGuest[];
+  },
+): Promise<CreateOccupationResult> {
+  return getJSON(`/occupations/${occupationId}`, {
+    method: 'PATCH',
+    headers: {
+      ...authHeaders(accessToken),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function deleteOccupation(accessToken: string, occupationId: string): Promise<void> {
   const res = await fetch(`${apiBaseUrl()}/occupations/${occupationId}`, {
     method: 'DELETE',
@@ -127,4 +147,47 @@ export async function deleteOccupation(accessToken: string, occupationId: string
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }
+}
+
+/** Convert stored guests (pair:/host) into editable guest:N share refs. */
+export function guestsForEditForm(guests: OccupationGuest[]): OccupationGuest[] {
+  const pairToIndices = new Map<string, number[]>();
+  guests.forEach((g, i) => {
+    const sw = g.share_with || '';
+    if (sw.startsWith('pair:')) {
+      const arr = pairToIndices.get(sw) ?? [];
+      arr.push(i);
+      pairToIndices.set(sw, arr);
+    }
+  });
+  return guests.map((g, i) => {
+    const room = g.room === 'double_with_host' || g.room === 'shared' ? 'shared' : 'alone';
+    const sw = g.share_with || (g.room === 'double_with_host' ? 'host' : '');
+    if (room === 'shared' && sw === 'host') {
+      return {
+        first_name: g.first_name,
+        relation: (g.relation || 'ami') as GuestRelation,
+        room: 'shared',
+        share_with: 'host',
+      };
+    }
+    if (room === 'shared' && sw.startsWith('pair:')) {
+      const idxs = pairToIndices.get(sw) ?? [];
+      const other = idxs.find((j) => j !== i);
+      if (other !== undefined) {
+        return {
+          first_name: g.first_name,
+          relation: (g.relation || 'ami') as GuestRelation,
+          room: 'shared',
+          share_with: `guest:${other}`,
+        };
+      }
+    }
+    return {
+      first_name: g.first_name,
+      relation: (g.relation || 'ami') as GuestRelation,
+      room: 'alone',
+      share_with: '',
+    };
+  });
 }

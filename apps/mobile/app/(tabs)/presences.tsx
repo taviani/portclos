@@ -19,11 +19,14 @@ import {
   useCreateOccupation,
   useDeleteOccupation,
   useOccupations,
+  useUpdateOccupation,
 } from '@/hooks/useOccupations';
 import {
   GUEST_RELATION_LABELS,
   guestSleepLabel,
+  guestsForEditForm,
   type GuestRelation,
+  type Occupation,
   type OccupationGuest,
 } from '@/lib/api';
 
@@ -183,9 +186,11 @@ export default function PresencesScreen() {
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const occupations = useOccupations(house?.id, month);
   const createOcc = useCreateOccupation(house?.id);
+  const updateOcc = useUpdateOccupation(house?.id);
   const deleteOcc = useDeleteOccupation(house?.id);
   const updateHouse = useUpdateHouse(house?.id);
 
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [rangeStart, setRangeStart] = useState<string | null>(null);
   const [rangeEnd, setRangeEnd] = useState<string | null>(null);
   const [note, setNote] = useState('');
@@ -241,6 +246,47 @@ export default function PresencesScreen() {
     setFormError(null);
   }, []);
 
+  const resetForm = useCallback(() => {
+    setEditingId(null);
+    setNote('');
+    setGuests([]);
+    clearSelection();
+    setCapacityWarnText(null);
+  }, [clearSelection]);
+
+  const startEdit = useCallback(
+    (o: Occupation) => {
+      setEditingId(o.id);
+      setRangeStart(o.start_date);
+      setRangeEnd(o.end_date);
+      setNote(o.note ?? '');
+      setGuests(guestsForEditForm(o.guests ?? []));
+      setFormError(null);
+      setCapacityWarnText(null);
+      setMonth(o.start_date.slice(0, 7));
+      scrollFormIntoView();
+    },
+    [scrollFormIntoView],
+  );
+
+  const confirmDelete = useCallback(
+    (occupationId: string) => {
+      Alert.alert('Supprimer cette présence ?', undefined, [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: () => {
+            void deleteOcc.mutateAsync(occupationId).then(() => {
+              if (editingId === occupationId) resetForm();
+            });
+          },
+        },
+      ]);
+    },
+    [deleteOcc, editingId, resetForm],
+  );
+
   const occupiedDays = useMemo(() => {
     const set = new Set<string>();
     for (const o of occupations.data?.occupations ?? []) {
@@ -289,7 +335,6 @@ export default function PresencesScreen() {
         };
       })
       .filter((g) => g.first_name.length > 0);
-    // Remap guest: indices after filter
     const indexMap = new Map(cleaned.map((g, newI) => [g._i, newI]));
     const payload = cleaned.map(({ first_name, relation, room, share_with }) => {
       let sw = share_with;
@@ -304,17 +349,18 @@ export default function PresencesScreen() {
       return { first_name, relation, room, share_with: sw };
     });
     setFormError(null);
-    void createOcc
-      .mutateAsync({
-        start_date: selectedStart,
-        end_date: selectedEnd,
-        note: note.trim() || undefined,
-        guests: payload,
-      })
+    const body = {
+      start_date: selectedStart,
+      end_date: selectedEnd,
+      note: note.trim() || undefined,
+      guests: payload,
+    };
+    const req = editingId
+      ? updateOcc.mutateAsync({ occupationId: editingId, ...body })
+      : createOcc.mutateAsync(body);
+    void req
       .then((res) => {
-        setNote('');
-        setGuests([]);
-        clearSelection();
+        resetForm();
         setMonth(selectedStart.slice(0, 7));
         if (res.capacity_warning) {
           const w = res.capacity_warning;
@@ -323,8 +369,6 @@ export default function PresencesScreen() {
             `Le ${formatDay(w.max_day)} : ${w.people ?? w.headcount} pers. / ${w.rooms_used} chambre(s) pour ${w.rooms_available} dispo. Présence enregistrée.`;
           setCapacityWarnText(msg);
           Alert.alert('Capacité dépassée', msg);
-        } else {
-          setCapacityWarnText(null);
         }
       })
       .catch((e) => {
@@ -339,7 +383,16 @@ export default function PresencesScreen() {
         }
         setFormError(raw);
       });
-  }, [selectedStart, selectedEnd, guests, note, createOcc, clearSelection]);
+  }, [
+    selectedStart,
+    selectedEnd,
+    guests,
+    note,
+    editingId,
+    createOcc,
+    updateOcc,
+    resetForm,
+  ]);
 
   if (isLoading) {
     return (
@@ -362,8 +415,13 @@ export default function PresencesScreen() {
     );
   }
 
-  const canSave = !!selectedStart && !!selectedEnd && !createOcc.isPending;
+  const canSave =
+    !!selectedStart &&
+    !!selectedEnd &&
+    !createOcc.isPending &&
+    !updateOcc.isPending;
   const list = occupations.data?.occupations ?? [];
+  const saving = createOcc.isPending || updateOcc.isPending;
 
   return (
     <KeyboardAvoidingView
@@ -578,12 +636,24 @@ export default function PresencesScreen() {
                 {o.note ? <Text style={styles.hint}>{o.note}</Text> : null}
               </View>
               {mine ? (
-                <Pressable
-                  onPress={() => void deleteOcc.mutateAsync(o.id)}
-                  disabled={deleteOcc.isPending}
-                >
-                  <Text style={styles.delete}>Suppr.</Text>
-                </Pressable>
+                <RNView style={styles.occActions}>
+                  <Pressable
+                    onPress={() => startEdit(o)}
+                    disabled={saving}
+                    style={styles.occActionBtn}
+                  >
+                    <Text style={styles.editLink}>
+                      {editingId === o.id ? 'En cours…' : 'Modifier'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => confirmDelete(o.id)}
+                    disabled={deleteOcc.isPending || saving}
+                    style={styles.occActionBtn}
+                  >
+                    <Text style={styles.delete}>Suppr.</Text>
+                  </Pressable>
+                </RNView>
               ) : null}
             </View>
           );
@@ -595,7 +665,14 @@ export default function PresencesScreen() {
           formY.current = e.nativeEvent.layout.y;
         }}
       >
-      <Text style={styles.section}>Enregistrer la présence</Text>
+      <Text style={styles.section}>
+        {editingId ? 'Modifier la présence' : 'Enregistrer la présence'}
+      </Text>
+      {editingId ? (
+        <Pressable onPress={resetForm} style={styles.clearBtn}>
+          <Text style={styles.clearText}>Annuler la modification</Text>
+        </Pressable>
+      ) : null}
       <TextInput
         style={[
           styles.input,
@@ -611,9 +688,7 @@ export default function PresencesScreen() {
       <Text style={styles.guestTitle}>
         Invités (optionnel) · total {guestHeadcount} pers.
       </Text>
-      <Text style={styles.guestHint}>
-        Chambre seule, ou lit double partagé avec toi ou un autre invité.
-      </Text>
+      <Text style={styles.guestHint}>Précise le couchage de chaque invité.</Text>
       {guests.map((g, idx) => {
         const isAlone = (g.room || 'alone') !== 'shared';
         const withHost = g.room === 'shared' && g.share_with === 'host';
@@ -716,9 +791,11 @@ export default function PresencesScreen() {
         onPress={savePresence}
       >
         <Text style={styles.buttonText}>
-          {selectedStart && selectedEnd
-            ? `Enregistrer ${formatDay(selectedStart)} → ${formatDay(selectedEnd)}`
-            : 'Choisis début et fin'}
+          {!selectedStart || !selectedEnd
+            ? 'Choisis début et fin'
+            : editingId
+              ? `Mettre à jour ${formatDay(selectedStart)} → ${formatDay(selectedEnd)}`
+              : `Enregistrer ${formatDay(selectedStart)} → ${formatDay(selectedEnd)}`}
         </Text>
       </Pressable>
       {formError ? <Text style={styles.err}>{formError}</Text> : null}
@@ -904,6 +981,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     gap: 8,
+  },
+  occActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  occActionBtn: {
+    paddingVertical: 4,
+  },
+  editLink: {
+    color: '#1a1612',
+    fontSize: 13,
+    fontWeight: '600',
   },
   delete: {
     color: '#9b1c1c',

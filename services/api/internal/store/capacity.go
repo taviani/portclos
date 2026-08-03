@@ -536,23 +536,7 @@ func (s *Store) CreateOccupationWithGuests(
 	note string,
 	guests []OccupationGuest,
 ) (Occupation, *CapacityWarning, error) {
-	for i := range guests {
-		room, err := NormalizeGuestRoom(guests[i].Room)
-		if err != nil {
-			return Occupation{}, nil, err
-		}
-		sw, err := NormalizeGuestShareWith(room, guests[i].ShareWith)
-		if err != nil {
-			return Occupation{}, nil, err
-		}
-		// Legacy body: room=double_with_host without share_with.
-		if guests[i].Room == RoomDoubleWithHost && strings.TrimSpace(guests[i].ShareWith) == "" {
-			sw = ShareWithHost
-		}
-		guests[i].Room = room
-		guests[i].ShareWith = sw
-	}
-	if err := resolveGuestPairs(guests); err != nil {
+	if err := normalizeGuestsForSave(guests); err != nil {
 		return Occupation{}, nil, err
 	}
 
@@ -591,6 +575,107 @@ RETURNING id::text, first_name, relation, room, share_with`,
 			return Occupation{}, nil, err
 		}
 		o.Guests = append(o.Guests, saved)
+	}
+	o.Headcount = 1 + len(o.Guests)
+
+	if err := tx.Commit(ctx); err != nil {
+		return Occupation{}, nil, err
+	}
+
+	peak, err := s.PeakCapacity(ctx, houseID, start, end)
+	if err != nil {
+		return o, nil, nil
+	}
+	if peak.Detail != "" {
+		return o, &peak, nil
+	}
+	return o, nil, nil
+}
+
+func normalizeGuestsForSave(guests []OccupationGuest) error {
+	for i := range guests {
+		room, err := NormalizeGuestRoom(guests[i].Room)
+		if err != nil {
+			return err
+		}
+		sw, err := NormalizeGuestShareWith(room, guests[i].ShareWith)
+		if err != nil {
+			return err
+		}
+		if guests[i].Room == RoomDoubleWithHost && strings.TrimSpace(guests[i].ShareWith) == "" {
+			sw = ShareWithHost
+		}
+		guests[i].Room = room
+		guests[i].ShareWith = sw
+	}
+	return resolveGuestPairs(guests)
+}
+
+func (s *Store) UpdateOccupationWithGuests(
+	ctx context.Context,
+	occupationID, userSub string,
+	start, end time.Time,
+	note string,
+	guests []OccupationGuest,
+	replaceGuests bool,
+) (Occupation, *CapacityWarning, error) {
+	if replaceGuests {
+		if err := normalizeGuestsForSave(guests); err != nil {
+			return Occupation{}, nil, err
+		}
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Occupation{}, nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var o Occupation
+	var startOut, endOut time.Time
+	var houseID string
+	err = tx.QueryRow(ctx, `
+UPDATE occupations
+SET start_date = $3::date, end_date = $4::date, note = $5
+WHERE id = $1 AND user_sub = $2
+RETURNING id::text, house_id::text, user_sub, start_date, end_date, note, created_at`,
+		occupationID, userSub, start, end, note,
+	).Scan(&o.ID, &houseID, &o.UserSub, &startOut, &endOut, &o.Note, &o.CreatedAt)
+	if err != nil {
+		return Occupation{}, nil, err
+	}
+	o.HouseID = houseID
+	o.StartDate = formatDate(startOut)
+	o.EndDate = formatDate(endOut)
+
+	if replaceGuests {
+		if _, err := tx.Exec(ctx, `DELETE FROM occupation_guests WHERE occupation_id = $1`, occupationID); err != nil {
+			return Occupation{}, nil, err
+		}
+		o.Guests = []OccupationGuest{}
+		for _, g := range guests {
+			gid := uuid.NewString()
+			var saved OccupationGuest
+			err = tx.QueryRow(ctx, `
+INSERT INTO occupation_guests (id, occupation_id, first_name, relation, room, share_with)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id::text, first_name, relation, room, share_with`,
+				gid, occupationID, g.FirstName, g.Relation, g.Room, g.ShareWith,
+			).Scan(&saved.ID, &saved.FirstName, &saved.Relation, &saved.Room, &saved.ShareWith)
+			if err != nil {
+				return Occupation{}, nil, err
+			}
+			o.Guests = append(o.Guests, saved)
+		}
+	} else {
+		loaded, err := s.loadOccupationGuests(ctx, []string{occupationID})
+		if err != nil {
+			return Occupation{}, nil, err
+		}
+		o.Guests = loaded[occupationID]
+		if o.Guests == nil {
+			o.Guests = []OccupationGuest{}
+		}
 	}
 	o.Headcount = 1 + len(o.Guests)
 
