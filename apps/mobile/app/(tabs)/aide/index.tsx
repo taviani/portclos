@@ -36,7 +36,7 @@ export default function AideListScreen() {
       setTitle('');
       setBody('');
       setComposing(false);
-      router.push(`/(tabs)/maison/aide/${a.id}` as Href);
+      router.push(`/(tabs)/aide/${a.id}` as Href);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'création impossible');
     }
@@ -111,7 +111,7 @@ export default function AideListScreen() {
             title={a.title}
             description={a.body ? a.body.slice(0, 100) : 'Sans texte'}
             descriptionNumberOfLines={2}
-            onPress={() => router.push(`/(tabs)/maison/aide/${a.id}` as Href)}
+            onPress={() => router.push(`/(tabs)/aide/${a.id}` as Href)}
             left={(props) => (
               <List.Icon {...props} icon="help-circle-outline" color={theme.colors.primary} />
             )}

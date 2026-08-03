@@ -128,7 +128,7 @@ export default function BlogListScreen() {
         });
       }
       resetComposer();
-      router.push(`/(tabs)/maison/blog/${post.id}` as Href);
+      router.push(`/(tabs)/blog/${post.id}` as Href);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'publication impossible');
     }
@@ -246,7 +246,7 @@ export default function BlogListScreen() {
                     extras ? `\n${extras}` : ''
                   }`}
                   descriptionNumberOfLines={4}
-                  onPress={() => router.push(`/(tabs)/maison/blog/${p.id}` as Href)}
+                  onPress={() => router.push(`/(tabs)/blog/${p.id}` as Href)}
                   left={() =>
                     cover ? (
                       <AuthedImage

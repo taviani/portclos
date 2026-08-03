@@ -116,7 +116,7 @@ export default function LoginScreen() {
         variant="titleMedium"
         style={{ color: Lighthouse.beaconDeep, fontWeight: '600', marginTop: 4 }}
       >
-        la maison, en partage
+        gestionnaire de maison
       </Text>
       <Text
         variant="bodyLarge"

@@ -47,7 +47,11 @@ go run ./cmd/server
 - `POST|DELETE /me/avatar` · `GET /avatars/{userSub}` — avatar image
 - `GET|POST /houses` — multi-house membership (JWT `sub`)
 - `GET /houses/{id}` — member-only
-- `GET|POST /houses/{id}/occupations` — occupation ranges (`from`/`to` or body `start_date`/`end_date`)
+- `PATCH /houses/{id}` — owner: `{ "single_beds"?, "double_beds"?, "address"? }` (`bed_capacity` legacy → lits simples)
+- `GET /houses/{id}/search?q=` — recherche maison (Postgres FTS français + trigram)
+- `GET /houses/{id}/occupations` — `{ occupations, single_beds, double_beds, bed_capacity, day_loads }` (`from`/`to`)
+- `POST /houses/{id}/occupations` — `{ start_date, end_date, note?, guests? }` → `{ occupation, capacity_warning? }`
+  - guests: `{ first_name, relation?, room?: alone|shared, share_with?: host|guest:<i> }` (lit double avec hôte ou autre invité ; soft warn si pics > chambres/places)
 - `DELETE /occupations/{id}` — delete own occupation
 - `GET /houses/{id}/members` — house roster (display names)
 - `GET|POST /houses/{id}/posts` · `GET|DELETE /posts/{id}` — house blog (`tags`, `mentions` on create)

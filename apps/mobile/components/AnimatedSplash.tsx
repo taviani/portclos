@@ -172,7 +172,7 @@ export function AnimatedSplash({ ready, children }: Props) {
 
           <AnimatedView style={[styles.wordBlock, wordStyle]}>
             <Text style={styles.brand}>Portclos</Text>
-            <Text style={styles.tag}>la maison, en partage</Text>
+            <Text style={styles.tag}>gestionnaire de maison</Text>
           </AnimatedView>
         </View>
       </AnimatedView>

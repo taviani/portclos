@@ -4,6 +4,10 @@ export type House = {
   id: string;
   name: string;
   role: string;
+  address: string;
+  single_beds: number;
+  double_beds: number;
+  bed_capacity: number;
   created_at: string;
 };
 
@@ -27,6 +31,34 @@ export async function createHouse(accessToken: string, name: string): Promise<Ho
     },
     body: JSON.stringify({ name }),
   });
+}
+
+export async function updateHouse(
+  accessToken: string,
+  houseId: string,
+  patch: {
+    bed_capacity?: number;
+    single_beds?: number;
+    double_beds?: number;
+    address?: string;
+  },
+): Promise<House> {
+  return getJSON(`/houses/${houseId}`, {
+    method: 'PATCH',
+    headers: {
+      ...authHeaders(accessToken),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function updateHouseBedCapacity(
+  accessToken: string,
+  houseId: string,
+  bedCapacity: number,
+): Promise<House> {
+  return updateHouse(accessToken, houseId, { bed_capacity: bedCapacity });
 }
 
 export async function fetchHouseMembers(

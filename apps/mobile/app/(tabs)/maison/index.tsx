@@ -1,58 +1,24 @@
-import { useCallback, useLayoutEffect } from 'react';
-import { ActionSheetIOS, Alert, Platform, StyleSheet, View } from 'react-native';
+import { useLayoutEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { type Href, router, useNavigation } from 'expo-router';
-import { Appbar, Button, Text, ActivityIndicator } from 'react-native-paper';
+import { Button, Text, ActivityIndicator } from 'react-native-paper';
 
 import { BeaconBar } from '@/components/brand/BeaconRail';
 import { LighthouseMark } from '@/components/LighthouseMark';
 import { MenuRow } from '@/components/MenuRow';
 import { useCurrentHouse } from '@/hooks/useHouses';
-import { useSession } from '@/providers/SessionProvider';
 import { useAppTheme } from '@/theme/paper';
 
 export default function MaisonHubScreen() {
   const theme = useAppTheme();
   const navigation = useNavigation();
-  const { signOut } = useSession();
   const { house, isLoading, error } = useCurrentHouse();
-
-  const openMenu = useCallback(() => {
-    const changeHouse = () => router.push('/(tabs)/me');
-    const logout = () => void signOut();
-
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Annuler', 'Changer de maison', 'Se déconnecter'],
-          cancelButtonIndex: 0,
-          destructiveButtonIndex: 2,
-        },
-        (index) => {
-          if (index === 1) changeHouse();
-          if (index === 2) logout();
-        },
-      );
-      return;
-    }
-
-    Alert.alert('Maison', undefined, [
-      { text: 'Changer de maison', onPress: changeHouse },
-      { text: 'Se déconnecter', style: 'destructive', onPress: logout },
-      { text: 'Annuler', style: 'cancel' },
-    ]);
-  }, [signOut]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
       title: house?.name ?? 'Maison',
-      headerStyle: { backgroundColor: theme.colors.background },
-      headerTintColor: theme.colors.onBackground,
-      headerShadowVisible: false,
-      headerRight: () => (
-        <Appbar.Action icon="dots-horizontal" onPress={openMenu} accessibilityLabel="Menu" />
-      ),
     });
-  }, [navigation, house?.name, openMenu, theme.colors.background, theme.colors.onBackground]);
+  }, [navigation, house?.name]);
 
   if (isLoading) {
     return (
@@ -77,7 +43,7 @@ export default function MaisonHubScreen() {
         <Button
           mode="contained"
           icon="account"
-          onPress={() => router.push('/(tabs)/me')}
+          onPress={() => router.push('/compte')}
           style={styles.cta}
           contentStyle={styles.ctaContent}
         >
@@ -90,58 +56,55 @@ export default function MaisonHubScreen() {
     );
   }
 
+  const address = house.address?.trim() ?? '';
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={styles.hero}>
         <View style={{ flex: 1 }}>
           <Text
-            variant="labelLarge"
-            style={{
-              color: theme.colors.secondary,
-              letterSpacing: 0.6,
-              textTransform: 'uppercase',
-            }}
-          >
-            {house.role === 'owner' ? 'Propriétaire' : 'Membre'}
-          </Text>
-          <Text
             variant="headlineMedium"
             style={{
               color: theme.colors.onBackground,
               fontWeight: '800',
-              marginTop: 4,
               letterSpacing: -0.4,
             }}
           >
-            Que veux-tu faire ?
+            {house.name}
           </Text>
-          <BeaconBar style={{ marginTop: 10 }} />
+          {address ? (
+            <Text
+              variant="bodyLarge"
+              style={{
+                color: theme.colors.onSurfaceVariant,
+                marginTop: 8,
+                lineHeight: 22,
+              }}
+            >
+              {address}
+            </Text>
+          ) : house.role === 'owner' ? (
+            <Text
+              variant="bodyMedium"
+              style={{
+                color: theme.colors.outline,
+                marginTop: 8,
+                lineHeight: 20,
+              }}
+              onPress={() => router.push('/compte')}
+            >
+              Ajouter l’adresse dans Compte
+            </Text>
+          ) : null}
+          <BeaconBar style={{ marginTop: 12 }} />
         </View>
         <LighthouseMark width={72} height={94} glowOpacity={0.55} />
       </View>
       <MenuRow
-        title="Blog"
-        subtitle="Publier, commenter, réagir"
-        icon="newspaper-variant-outline"
-        onPress={() => router.push('/(tabs)/maison/blog' as Href)}
-      />
-      <MenuRow
-        title="Présences"
-        subtitle="Qui est là, et quand"
-        icon="calendar-month"
-        onPress={() => router.push('/(tabs)/maison/presences')}
-      />
-      <MenuRow
         title="Fermeture"
         subtitle="Checklist avant de partir"
         icon="clipboard-check-outline"
-        onPress={() => router.push('/(tabs)/maison/fermeture')}
-      />
-      <MenuRow
-        title="Aide"
-        subtitle="Jardin, wifi, pompe…"
-        icon="help-circle-outline"
-        onPress={() => router.push('/(tabs)/maison/aide' as Href)}
+        onPress={() => router.push('/(tabs)/maison/fermeture' as Href)}
       />
       {error ? (
         <Text style={{ color: theme.colors.error, marginTop: 16 }}>{error.message}</Text>

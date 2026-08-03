@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 
+import { MaisonHeaderActions } from '@/components/MaisonHeaderActions';
 import { useAppTheme } from '@/theme/paper';
 
 export default function BlogLayout() {
@@ -13,6 +14,7 @@ export default function BlogLayout() {
         headerShadowVisible: false,
         headerTitleStyle: { fontWeight: '700' },
         contentStyle: { backgroundColor: theme.colors.background },
+        headerRight: () => <MaisonHeaderActions />,
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Blog' }} />

@@ -1,5 +1,21 @@
 import { apiBaseUrl, authHeaders, getJSON } from '@/lib/api/http';
 
+export type GuestRelation = 'ami' | 'conjoint' | 'enfant' | 'famille' | 'autre' | '';
+
+/** alone = own bedroom; shared = double bed with host or another guest */
+export type GuestRoom = 'alone' | 'shared';
+
+/** host | guest:<index> on write; host | pair:<id> when stored */
+export type GuestShareWith = 'host' | string;
+
+export type OccupationGuest = {
+  id?: string;
+  first_name: string;
+  relation: GuestRelation | string;
+  room: GuestRoom | string;
+  share_with?: GuestShareWith;
+};
+
 export type Occupation = {
   id: string;
   house_id: string;
@@ -8,14 +24,75 @@ export type Occupation = {
   end_date: string;
   note: string;
   created_at: string;
+  guests: OccupationGuest[];
+  headcount: number;
 };
+
+export type DayLoad = {
+  day: string;
+  headcount: number;
+  rooms: number;
+  over_capacity: boolean;
+};
+
+export type CapacityWarning = {
+  max_day: string;
+  people: number;
+  places: number;
+  rooms_used: number;
+  rooms_available: number;
+  single_beds: number;
+  double_beds: number;
+  detail: string;
+  capacity?: number;
+  headcount?: number;
+};
+
+export type OccupationsMonth = {
+  occupations: Occupation[];
+  bed_capacity: number;
+  single_beds: number;
+  double_beds: number;
+  day_loads: DayLoad[];
+};
+
+export type CreateOccupationResult = {
+  occupation: Occupation;
+  capacity_warning: CapacityWarning | null;
+};
+
+export const GUEST_RELATION_LABELS: Record<string, string> = {
+  ami: 'Ami',
+  conjoint: 'Conjoint',
+  enfant: 'Enfant',
+  famille: 'Famille',
+  autre: 'Autre',
+  '': '—',
+};
+
+export function guestSleepLabel(g: OccupationGuest, all: OccupationGuest[]): string {
+  const room = g.room === 'double_with_host' ? 'shared' : g.room;
+  const sw = g.share_with || (g.room === 'double_with_host' ? 'host' : '');
+  if (room !== 'shared') return '';
+  if (sw === 'host') return ' · lit double avec toi';
+  if (sw.startsWith('pair:')) {
+    const other = all.find((x) => x !== g && x.share_with === sw);
+    return other?.first_name ? ` · lit double avec ${other.first_name}` : ' · lit double';
+  }
+  if (sw.startsWith('guest:')) {
+    const idx = Number(sw.slice(6));
+    const other = all[idx];
+    return other?.first_name ? ` · lit double avec ${other.first_name}` : ' · lit double';
+  }
+  return ' · lit double';
+}
 
 export async function fetchOccupations(
   accessToken: string,
   houseId: string,
   from: string,
   to: string,
-): Promise<Occupation[]> {
+): Promise<OccupationsMonth> {
   const q = new URLSearchParams({ from, to });
   return getJSON(`/houses/${houseId}/occupations?${q}`, {
     headers: authHeaders(accessToken),
@@ -25,8 +102,13 @@ export async function fetchOccupations(
 export async function createOccupation(
   accessToken: string,
   houseId: string,
-  input: { start_date: string; end_date: string; note?: string },
-): Promise<Occupation> {
+  input: {
+    start_date: string;
+    end_date: string;
+    note?: string;
+    guests?: OccupationGuest[];
+  },
+): Promise<CreateOccupationResult> {
   return getJSON(`/houses/${houseId}/occupations`, {
     method: 'POST',
     headers: {
