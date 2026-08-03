@@ -26,13 +26,14 @@ type ChecklistItemPhoto struct {
 }
 
 type ChecklistItem struct {
-	ID        string               `json:"id"`
-	HouseID   string               `json:"house_id"`
-	Label     string               `json:"label"`
-	Optional  bool                 `json:"optional"`
-	SortOrder int                  `json:"sort_order"`
-	CreatedAt time.Time            `json:"created_at"`
-	Photos    []ChecklistItemPhoto `json:"photos"`
+	ID          string               `json:"id"`
+	HouseID     string               `json:"house_id"`
+	Label       string               `json:"label"`
+	Description string               `json:"description"`
+	Optional    bool                 `json:"optional"`
+	SortOrder   int                  `json:"sort_order"`
+	CreatedAt   time.Time            `json:"created_at"`
+	Photos      []ChecklistItemPhoto `json:"photos"`
 }
 
 type Closing struct {
@@ -45,14 +46,15 @@ type Closing struct {
 }
 
 type ClosingItem struct {
-	ID        string               `json:"id"`
-	ClosingID string               `json:"closing_id"`
-	Label     string               `json:"label"`
-	Optional  bool                 `json:"optional"`
-	SortOrder int                  `json:"sort_order"`
-	Status    string               `json:"status"`
-	UpdatedAt time.Time            `json:"updated_at"`
-	Photos    []ChecklistItemPhoto `json:"photos"`
+	ID          string               `json:"id"`
+	ClosingID   string               `json:"closing_id"`
+	Label       string               `json:"label"`
+	Description string               `json:"description"`
+	Optional    bool                 `json:"optional"`
+	SortOrder   int                  `json:"sort_order"`
+	Status      string               `json:"status"`
+	UpdatedAt   time.Time            `json:"updated_at"`
+	Photos      []ChecklistItemPhoto `json:"photos"`
 }
 
 type ClosingDetail struct {
@@ -92,11 +94,14 @@ CREATE TABLE IF NOT EXISTS closing_checklist_items (
   id UUID PRIMARY KEY,
   house_id UUID NOT NULL REFERENCES houses (id) ON DELETE CASCADE,
   label TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   optional BOOLEAN NOT NULL DEFAULT false,
   requires_photo BOOLEAN NOT NULL DEFAULT false,
   sort_order INT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE closing_checklist_items
+  ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS closing_checklist_items_house_idx
   ON closing_checklist_items (house_id, sort_order);
 
@@ -129,12 +134,15 @@ CREATE TABLE IF NOT EXISTS closing_items (
   closing_id UUID NOT NULL REFERENCES closings (id) ON DELETE CASCADE,
   template_item_id UUID REFERENCES closing_checklist_items (id) ON DELETE SET NULL,
   label TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   optional BOOLEAN NOT NULL DEFAULT false,
   requires_photo BOOLEAN NOT NULL DEFAULT false,
   sort_order INT NOT NULL DEFAULT 0,
   status TEXT NOT NULL CHECK (status IN ('todo', 'done', 'skipped')),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE closing_items
+  ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS closing_items_closing_idx
   ON closing_items (closing_id, sort_order);
 `)
@@ -151,7 +159,7 @@ SELECT COUNT(*) FROM closing_checklist_items WHERE house_id = $1`, houseID).Scan
 		return nil
 	}
 	for i, item := range defaultChecklistSeed() {
-		if _, err := s.CreateChecklistItem(ctx, houseID, item.Label, item.Optional, i); err != nil {
+		if _, err := s.CreateChecklistItem(ctx, houseID, item.Label, "", item.Optional, i); err != nil {
 			return err
 		}
 	}
@@ -187,7 +195,7 @@ func (s *Store) ListChecklistItems(ctx context.Context, houseID string) ([]Check
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `
-SELECT id::text, house_id::text, label, optional, sort_order, created_at
+SELECT id::text, house_id::text, label, description, optional, sort_order, created_at
 FROM closing_checklist_items
 WHERE house_id = $1
 ORDER BY sort_order ASC, created_at ASC`, houseID)
@@ -200,7 +208,7 @@ ORDER BY sort_order ASC, created_at ASC`, houseID)
 	ids := make([]string, 0)
 	for rows.Next() {
 		var it ChecklistItem
-		if err := rows.Scan(&it.ID, &it.HouseID, &it.Label, &it.Optional, &it.SortOrder, &it.CreatedAt); err != nil {
+		if err := rows.Scan(&it.ID, &it.HouseID, &it.Label, &it.Description, &it.Optional, &it.SortOrder, &it.CreatedAt); err != nil {
 			return nil, err
 		}
 		it.Photos = []ChecklistItemPhoto{}
@@ -225,15 +233,15 @@ ORDER BY sort_order ASC, created_at ASC`, houseID)
 	return out, nil
 }
 
-func (s *Store) CreateChecklistItem(ctx context.Context, houseID, label string, optional bool, sortOrder int) (ChecklistItem, error) {
+func (s *Store) CreateChecklistItem(ctx context.Context, houseID, label, description string, optional bool, sortOrder int) (ChecklistItem, error) {
 	id := uuid.NewString()
 	var it ChecklistItem
 	err := s.pool.QueryRow(ctx, `
-INSERT INTO closing_checklist_items (id, house_id, label, optional, sort_order)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id::text, house_id::text, label, optional, sort_order, created_at`,
-		id, houseID, label, optional, sortOrder,
-	).Scan(&it.ID, &it.HouseID, &it.Label, &it.Optional, &it.SortOrder, &it.CreatedAt)
+INSERT INTO closing_checklist_items (id, house_id, label, description, optional, sort_order)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id::text, house_id::text, label, description, optional, sort_order, created_at`,
+		id, houseID, label, description, optional, sortOrder,
+	).Scan(&it.ID, &it.HouseID, &it.Label, &it.Description, &it.Optional, &it.SortOrder, &it.CreatedAt)
 	it.Photos = []ChecklistItemPhoto{}
 	return it, err
 }
@@ -246,15 +254,15 @@ FROM closing_checklist_items WHERE house_id = $1`, houseID).Scan(&n)
 	return n, err
 }
 
-func (s *Store) UpdateChecklistItem(ctx context.Context, itemID, houseID, label string, optional bool) (ChecklistItem, error) {
+func (s *Store) UpdateChecklistItem(ctx context.Context, itemID, houseID, label, description string, optional bool) (ChecklistItem, error) {
 	var it ChecklistItem
 	err := s.pool.QueryRow(ctx, `
 UPDATE closing_checklist_items
-SET label = $3, optional = $4
+SET label = $3, description = $4, optional = $5
 WHERE id = $1 AND house_id = $2
-RETURNING id::text, house_id::text, label, optional, sort_order, created_at`,
-		itemID, houseID, label, optional,
-	).Scan(&it.ID, &it.HouseID, &it.Label, &it.Optional, &it.SortOrder, &it.CreatedAt)
+RETURNING id::text, house_id::text, label, description, optional, sort_order, created_at`,
+		itemID, houseID, label, description, optional,
+	).Scan(&it.ID, &it.HouseID, &it.Label, &it.Description, &it.Optional, &it.SortOrder, &it.CreatedAt)
 	if err != nil {
 		return ChecklistItem{}, err
 	}
@@ -356,9 +364,9 @@ RETURNING id::text, house_id::text, started_by, status, started_at, completed_at
 		itemID := uuid.NewString()
 		if _, err := tx.Exec(ctx, `
 INSERT INTO closing_items (
-  id, closing_id, template_item_id, label, optional, sort_order, status
-) VALUES ($1, $2, $3, $4, $5, $6, 'todo')`,
-			itemID, closingID, t.ID, t.Label, t.Optional, t.SortOrder,
+  id, closing_id, template_item_id, label, description, optional, sort_order, status
+) VALUES ($1, $2, $3, $4, $5, $6, $7, 'todo')`,
+			itemID, closingID, t.ID, t.Label, t.Description, t.Optional, t.SortOrder,
 		); err != nil {
 			return ClosingDetail{}, err
 		}
@@ -388,7 +396,7 @@ FROM closings WHERE id = $1`, closingID,
 	}
 
 	rows, err := s.pool.Query(ctx, `
-SELECT id::text, closing_id::text, label, optional, sort_order, status, updated_at,
+SELECT id::text, closing_id::text, label, description, optional, sort_order, status, updated_at,
        template_item_id::text
 FROM closing_items
 WHERE closing_id = $1
@@ -407,7 +415,9 @@ ORDER BY sort_order ASC, label ASC`, closingID)
 	for rows.Next() {
 		var it ClosingItem
 		var templateID *string
-		if err := rows.Scan(&it.ID, &it.ClosingID, &it.Label, &it.Optional, &it.SortOrder, &it.Status, &it.UpdatedAt, &templateID); err != nil {
+		if err := rows.Scan(
+			&it.ID, &it.ClosingID, &it.Label, &it.Description, &it.Optional, &it.SortOrder, &it.Status, &it.UpdatedAt, &templateID,
+		); err != nil {
 			return ClosingDetail{}, err
 		}
 		it.Photos = []ChecklistItemPhoto{}

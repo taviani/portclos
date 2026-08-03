@@ -151,6 +151,19 @@ export default function ClosingRunScreen() {
                   >
                     {item.label}
                   </Text>
+                  {item.description?.trim() ? (
+                    <Text
+                      variant="bodyMedium"
+                      style={{
+                        color: theme.colors.onSurfaceVariant,
+                        marginTop: 4,
+                        lineHeight: 20,
+                        opacity: checked || skipped ? 0.55 : 1,
+                      }}
+                    >
+                      {item.description}
+                    </Text>
+                  ) : null}
                   {item.optional ? (
                     <Chip
                       compact

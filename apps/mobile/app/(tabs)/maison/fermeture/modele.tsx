@@ -22,7 +22,7 @@ import {
   useUploadChecklistPhoto,
 } from '@/hooks/useClosing';
 import { useCurrentHouse } from '@/hooks/useHouses';
-import { checklistPhotoUrl } from '@/lib/api';
+import { checklistPhotoUrl, type ChecklistItem } from '@/lib/api';
 import { useAppTheme } from '@/theme/paper';
 
 export default function FermetureModeleScreen() {
@@ -36,8 +36,42 @@ export default function FermetureModeleScreen() {
   const deletePhoto = useDeleteChecklistPhoto(house?.id);
 
   const [label, setLabel] = useState('');
+  const [description, setDescription] = useState('');
   const [optional, setOptional] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editOptional, setEditOptional] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const startEdit = (it: ChecklistItem) => {
+    setEditingId(it.id);
+    setEditLabel(it.label);
+    setEditDescription(it.description ?? '');
+    setEditOptional(it.optional);
+    setError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditLabel('');
+    setEditDescription('');
+    setEditOptional(false);
+  };
+
+  const saveEdit = () => {
+    if (!editingId || !editLabel.trim()) return;
+    setError(null);
+    void updateItem
+      .mutateAsync({
+        itemId: editingId,
+        label: editLabel.trim(),
+        description: editDescription.trim(),
+        optional: editOptional,
+      })
+      .then(() => cancelEdit())
+      .catch((e) => setError(e instanceof Error ? e.message : 'enregistrement impossible'));
+  };
 
   const uploadFromAsset = async (
     itemId: string,
@@ -119,6 +153,7 @@ export default function FermetureModeleScreen() {
     <ScrollView
       style={{ backgroundColor: theme.colors.background }}
       contentContainerStyle={styles.pad}
+      keyboardShouldPersistTaps="handled"
     >
       <Text
         variant="headlineMedium"
@@ -130,86 +165,164 @@ export default function FermetureModeleScreen() {
         variant="bodyLarge"
         style={{ color: theme.colors.onSurfaceVariant, marginTop: 8, marginBottom: 18, lineHeight: 24 }}
       >
-        Copié à chaque fermeture. Ajoute une photo pour indiquer où agir.
+        Copié à chaque fermeture. Ajoute une description ou une photo pour indiquer où agir.
       </Text>
 
-      {(items.data ?? []).map((it) => (
-        <Surface
-          key={it.id}
-          style={[styles.item, { backgroundColor: theme.colors.elevation.level1 }]}
-          elevation={0}
-        >
-          <View style={styles.itemTop}>
-            <View style={{ flex: 1 }}>
-              <Text variant="titleMedium" style={{ fontWeight: '700', color: theme.colors.onSurface }}>
-                {it.label}
-              </Text>
-              <Chip compact style={{ alignSelf: 'flex-start', marginTop: 8 }}>
-                {it.optional ? 'Optionnelle' : 'Requise'}
-              </Chip>
-            </View>
-            <IconButton
-              icon="delete-outline"
-              iconColor={theme.colors.error}
-              onPress={() => {
-                Alert.alert('Supprimer cette tâche ?', it.label, [
-                  { text: 'Annuler', style: 'cancel' },
-                  {
-                    text: 'Supprimer',
-                    style: 'destructive',
-                    onPress: () => {
-                      void deleteItem.mutateAsync(it.id).catch((e) =>
-                        setError(e instanceof Error ? e.message : 'suppression impossible'),
-                      );
-                    },
-                  },
-                ]);
-              }}
-            />
-          </View>
-
-          {it.photos?.length ? (
-            <ScrollView horizontal style={styles.photos} showsHorizontalScrollIndicator={false}>
-              {it.photos.map((p) => (
-                <View key={p.id} style={styles.photoWrap}>
-                  <AuthedImage
-                    url={checklistPhotoUrl(p.id)}
-                    cacheKey={p.id}
-                    style={styles.photo}
-                  />
-                  <IconButton
-                    icon="close"
-                    size={16}
-                    style={styles.photoDel}
-                    containerColor={theme.colors.scrim}
-                    iconColor={theme.colors.onPrimary}
-                    onPress={() => void deletePhoto.mutateAsync(p.id)}
+      {(items.data ?? []).map((it) => {
+        const editing = editingId === it.id;
+        return (
+          <Surface
+            key={it.id}
+            style={[styles.item, { backgroundColor: theme.colors.elevation.level1 }]}
+            elevation={0}
+          >
+            {editing ? (
+              <View>
+                <TextInput
+                  mode="outlined"
+                  label="Libellé"
+                  value={editLabel}
+                  onChangeText={setEditLabel}
+                  style={{ backgroundColor: theme.colors.surface, marginBottom: 8 }}
+                />
+                <TextInput
+                  mode="outlined"
+                  label="Description (optionnel)"
+                  value={editDescription}
+                  onChangeText={setEditDescription}
+                  multiline
+                  numberOfLines={3}
+                  style={{ backgroundColor: theme.colors.surface }}
+                />
+                <View style={styles.switchRow}>
+                  <Text style={{ color: theme.colors.onSurface }}>Optionnelle</Text>
+                  <Switch
+                    value={editOptional}
+                    onValueChange={setEditOptional}
+                    color={theme.colors.primary}
                   />
                 </View>
-              ))}
-            </ScrollView>
-          ) : null}
+                <View style={styles.editActions}>
+                  <Button mode="text" onPress={cancelEdit}>
+                    Annuler
+                  </Button>
+                  <Button
+                    mode="contained"
+                    onPress={saveEdit}
+                    loading={updateItem.isPending}
+                    disabled={!editLabel.trim() || updateItem.isPending}
+                    style={{ borderRadius: 12 }}
+                  >
+                    Enregistrer
+                  </Button>
+                </View>
+              </View>
+            ) : (
+              <>
+                <View style={styles.itemTop}>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      variant="titleMedium"
+                      style={{ fontWeight: '700', color: theme.colors.onSurface }}
+                    >
+                      {it.label}
+                    </Text>
+                    {it.description?.trim() ? (
+                      <Text
+                        variant="bodyMedium"
+                        style={{
+                          color: theme.colors.onSurfaceVariant,
+                          marginTop: 6,
+                          lineHeight: 20,
+                        }}
+                      >
+                        {it.description}
+                      </Text>
+                    ) : null}
+                    <Chip compact style={{ alignSelf: 'flex-start', marginTop: 8 }}>
+                      {it.optional ? 'Optionnelle' : 'Requise'}
+                    </Chip>
+                  </View>
+                  <IconButton
+                    icon="delete-outline"
+                    iconColor={theme.colors.error}
+                    onPress={() => {
+                      Alert.alert('Supprimer cette tâche ?', it.label, [
+                        { text: 'Annuler', style: 'cancel' },
+                        {
+                          text: 'Supprimer',
+                          style: 'destructive',
+                          onPress: () => {
+                            void deleteItem.mutateAsync(it.id).catch((e) =>
+                              setError(
+                                e instanceof Error ? e.message : 'suppression impossible',
+                              ),
+                            );
+                          },
+                        },
+                      ]);
+                    }}
+                  />
+                </View>
 
-          <View style={styles.actions}>
-            <Button
-              mode="text"
-              compact
-              onPress={() => {
-                void updateItem.mutateAsync({
-                  itemId: it.id,
-                  label: it.label,
-                  optional: !it.optional,
-                });
-              }}
-            >
-              {it.optional ? 'Rendre requise' : 'Optionnelle'}
-            </Button>
-            <Button mode="text" compact icon="image-plus" onPress={() => pickHintPhoto(it.id)}>
-              Indication
-            </Button>
-          </View>
-        </Surface>
-      ))}
+                {it.photos?.length ? (
+                  <ScrollView
+                    horizontal
+                    style={styles.photos}
+                    showsHorizontalScrollIndicator={false}
+                  >
+                    {it.photos.map((p) => (
+                      <View key={p.id} style={styles.photoWrap}>
+                        <AuthedImage
+                          url={checklistPhotoUrl(p.id)}
+                          cacheKey={p.id}
+                          style={styles.photo}
+                        />
+                        <IconButton
+                          icon="close"
+                          size={16}
+                          style={styles.photoDel}
+                          containerColor={theme.colors.scrim}
+                          iconColor={theme.colors.onPrimary}
+                          onPress={() => void deletePhoto.mutateAsync(p.id)}
+                        />
+                      </View>
+                    ))}
+                  </ScrollView>
+                ) : null}
+
+                <View style={styles.actions}>
+                  <Button mode="text" compact icon="pencil" onPress={() => startEdit(it)}>
+                    Modifier
+                  </Button>
+                  <Button
+                    mode="text"
+                    compact
+                    onPress={() => {
+                      void updateItem.mutateAsync({
+                        itemId: it.id,
+                        label: it.label,
+                        description: it.description ?? '',
+                        optional: !it.optional,
+                      });
+                    }}
+                  >
+                    {it.optional ? 'Rendre requise' : 'Optionnelle'}
+                  </Button>
+                  <Button
+                    mode="text"
+                    compact
+                    icon="image-plus"
+                    onPress={() => pickHintPhoto(it.id)}
+                  >
+                    Indication
+                  </Button>
+                </View>
+              </>
+            )}
+          </Surface>
+        );
+      })}
 
       <Surface
         style={[styles.addBlock, { backgroundColor: theme.colors.primaryContainer }]}
@@ -229,6 +342,16 @@ export default function FermetureModeleScreen() {
           onChangeText={setLabel}
           style={{ backgroundColor: theme.colors.surface }}
         />
+        <TextInput
+          mode="outlined"
+          label="Description (optionnel)"
+          placeholder="Précisions, emplacement…"
+          value={description}
+          onChangeText={setDescription}
+          multiline
+          numberOfLines={3}
+          style={{ backgroundColor: theme.colors.surface, marginTop: 8 }}
+        />
         <View style={styles.switchRow}>
           <Text style={{ color: theme.colors.onPrimaryContainer }}>Optionnelle</Text>
           <Switch value={optional} onValueChange={setOptional} color={theme.colors.primary} />
@@ -241,9 +364,14 @@ export default function FermetureModeleScreen() {
           onPress={() => {
             setError(null);
             void createItem
-              .mutateAsync({ label: label.trim(), optional })
+              .mutateAsync({
+                label: label.trim(),
+                description: description.trim() || undefined,
+                optional,
+              })
               .then(() => {
                 setLabel('');
+                setDescription('');
                 setOptional(false);
               })
               .catch((e) => setError(e instanceof Error ? e.message : 'création impossible'));
@@ -273,6 +401,12 @@ const styles = StyleSheet.create({
   photo: { width: 92, height: 92, borderRadius: 14 },
   photoDel: { position: 'absolute', top: -4, right: -4, margin: 0 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
+  editActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 12,
+  },
   addBlock: { marginTop: 14, borderRadius: 20, padding: 16 },
   switchRow: {
     marginTop: 14,
