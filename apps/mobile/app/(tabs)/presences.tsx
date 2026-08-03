@@ -1,7 +1,9 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -159,6 +161,22 @@ export default function PresencesScreen() {
   const endpointFg = useThemeColor({ light: '#fff', dark: '#1a1612' }, 'text');
   const warnBg = useThemeColor({ light: '#f5e6c8', dark: '#3d3218' }, 'background');
   const overBg = useThemeColor({ light: '#f0d4d4', dark: '#3d1e1e' }, 'background');
+  const screenBg = useThemeColor({ light: '#fff', dark: '#000' }, 'background');
+
+  const scrollRef = useRef<ScrollView>(null);
+  const formY = useRef(0);
+
+  const scrollFormIntoView = useCallback(() => {
+    const run = () => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, formY.current - 16),
+        animated: true,
+      });
+    };
+    requestAnimationFrame(() => {
+      setTimeout(run, Platform.OS === 'ios' ? 80 : 0);
+    });
+  }, []);
 
   const { house, isLoading, error } = useCurrentHouse();
   const me = useMe();
@@ -348,7 +366,19 @@ export default function PresencesScreen() {
   const list = occupations.data?.occupations ?? [];
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <KeyboardAvoidingView
+      style={[styles.flex, { backgroundColor: screenBg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+    >
+      <ScrollView
+        ref={scrollRef}
+        style={styles.flex}
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+      >
       <View style={styles.monthRow}>
         <Pressable onPress={() => setMonth((m) => shiftMonth(m, -1))}>
           <Text style={styles.monthNav}>‹</Text>
@@ -560,6 +590,11 @@ export default function PresencesScreen() {
         })
       )}
 
+      <RNView
+        onLayout={(e) => {
+          formY.current = e.nativeEvent.layout.y;
+        }}
+      >
       <Text style={styles.section}>Enregistrer la présence</Text>
       <TextInput
         style={[
@@ -570,6 +605,7 @@ export default function PresencesScreen() {
         placeholderTextColor={placeholderColor}
         value={note}
         onChangeText={setNote}
+        onFocus={scrollFormIntoView}
       />
 
       <Text style={styles.guestTitle}>
@@ -601,8 +637,9 @@ export default function PresencesScreen() {
                   prev.map((x, i) => (i === idx ? { ...x, first_name: t } : x)),
                 );
               }}
+              onFocus={scrollFormIntoView}
             />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.relScroll}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.relScroll} keyboardShouldPersistTaps="handled">
               {RELATION_OPTIONS.map((rel) => {
                 const active = g.relation === rel;
                 return (
@@ -623,7 +660,7 @@ export default function PresencesScreen() {
               })}
             </ScrollView>
             <Text style={styles.sleepLabel}>Couchage</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.relScroll}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.relScroll} keyboardShouldPersistTaps="handled">
               <Pressable
                 onPress={() => setGuests((prev) => applyGuestShare(prev, idx, 'alone'))}
                 style={[styles.relChip, isAlone && styles.roomChipActive]}
@@ -664,7 +701,10 @@ export default function PresencesScreen() {
         );
       })}
       <Pressable
-        onPress={() => setGuests((prev) => [...prev, emptyGuest()])}
+        onPress={() => {
+          setGuests((prev) => [...prev, emptyGuest()]);
+          scrollFormIntoView();
+        }}
         style={styles.clearBtn}
       >
         <Text style={styles.clearText}>+ Ajouter un invité</Text>
@@ -687,15 +727,20 @@ export default function PresencesScreen() {
       {occupations.error instanceof Error ? (
         <Text style={styles.err}>{occupations.error.message}</Text>
       ) : null}
-    </ScrollView>
+      </RNView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   scroll: {
     paddingHorizontal: 24,
     paddingTop: 16,
-    paddingBottom: 48,
+    paddingBottom: 120,
   },
   center: {
     flex: 1,
