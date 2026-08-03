@@ -31,7 +31,10 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
-		p.Email = user.Email
+		if user.Email != "" {
+			_ = db.UpsertProfileEmail(r.Context(), user.Subject, user.Email)
+			p.Email = user.Email
+		}
 		writeJSON(w, http.StatusOK, p)
 	})
 
@@ -53,12 +56,17 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			http.Error(w, `{"error":"display_name_too_long"}`, http.StatusBadRequest)
 			return
 		}
+		if user.Email != "" {
+			_ = db.UpsertProfileEmail(r.Context(), user.Subject, user.Email)
+		}
 		p, err := db.UpdateDisplayName(r.Context(), user.Subject, name)
 		if err != nil {
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
-		p.Email = user.Email
+		if p.Email == "" {
+			p.Email = user.Email
+		}
 		writeJSON(w, http.StatusOK, p)
 	})
 
@@ -87,7 +95,10 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		if old.StorageKey != "" && old.StorageKey != storageKey {
 			_ = files.Remove(old.StorageKey)
 		}
-		p.Email = user.Email
+		if user.Email != "" {
+			_ = db.UpsertProfileEmail(r.Context(), user.Subject, user.Email)
+			p.Email = user.Email
+		}
 		writeJSON(w, http.StatusOK, p)
 	})
 

@@ -2,6 +2,7 @@ import { View } from 'react-native';
 import { ActivityIndicator, Chip, Text } from 'react-native-paper';
 
 import type { HouseMember } from '@/lib/api';
+import { memberLabel } from '@/lib/memberLabel';
 import { useAppTheme } from '@/theme/paper';
 
 type Props = {
@@ -41,6 +42,7 @@ export function MemberMentionPicker({ members, selected, loading, onChange }: Pr
         <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
           {members.map((m) => {
             const on = selected.includes(m.user_sub);
+            const label = memberLabel(m);
             return (
               <Chip
                 key={m.user_sub}
@@ -56,7 +58,7 @@ export function MemberMentionPicker({ members, selected, loading, onChange }: Pr
                     : theme.colors.surfaceVariant,
                 }}
               >
-                {m.display_name}
+                {label}
               </Chip>
             );
           })}

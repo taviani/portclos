@@ -1,6 +1,7 @@
 import { authIssuer } from '@/lib/auth';
 
 import { apiBaseUrl, authHeaders, getJSON } from '@/lib/api/http';
+import { uploadPhotoMultipart } from '@/lib/api/upload';
 
 export type MeProfile = {
   sub: string;
@@ -33,29 +34,7 @@ export async function uploadAvatar(
   uri: string,
   mimeType?: string | null,
 ): Promise<MeProfile> {
-  const form = new FormData();
-  const name = uri.split('/').pop() || 'avatar.jpg';
-  form.append('photo', {
-    uri,
-    name,
-    type: mimeType || 'image/jpeg',
-  } as unknown as Blob);
-  const res = await fetch(`${apiBaseUrl()}/me/avatar`, {
-    method: 'POST',
-    headers: authHeaders(accessToken),
-    body: form,
-  });
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) detail = body.error;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail);
-  }
-  return res.json() as Promise<MeProfile>;
+  return uploadPhotoMultipart(accessToken, '/me/avatar', uri, mimeType);
 }
 
 export async function deleteAvatar(accessToken: string): Promise<void> {

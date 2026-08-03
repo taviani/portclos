@@ -1,4 +1,5 @@
 import { apiBaseUrl, authHeaders, getJSON } from '@/lib/api/http';
+import { uploadPhotoMultipart } from '@/lib/api/upload';
 
 export type ChecklistItemPhoto = {
   id: string;
@@ -146,30 +147,12 @@ export async function uploadChecklistPhoto(
   uri: string,
   mimeType?: string | null,
 ): Promise<ChecklistItemPhoto> {
-  const form = new FormData();
-  const name = uri.split('/').pop() || 'photo.jpg';
-  form.append('photo', {
+  return uploadPhotoMultipart(
+    accessToken,
+    `/closing-checklist/items/${itemId}/photos`,
     uri,
-    name,
-    type: mimeType || 'image/jpeg',
-  } as unknown as Blob);
-
-  const res = await fetch(`${apiBaseUrl()}/closing-checklist/items/${itemId}/photos`, {
-    method: 'POST',
-    headers: authHeaders(accessToken),
-    body: form,
-  });
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) detail = body.error;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail);
-  }
-  return res.json() as Promise<ChecklistItemPhoto>;
+    mimeType,
+  );
 }
 
 export async function deleteChecklistPhoto(accessToken: string, photoId: string): Promise<void> {
