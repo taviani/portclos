@@ -573,7 +573,7 @@ export default function CompteScreen() {
 
           <Text
             variant="bodyMedium"
-            style={{ color: theme.colors.onSurfaceVariant, marginBottom: 4 }}
+            style={{ color: theme.colors.onSurfaceVariant, marginBottom: 8 }}
           >
             Chambres
             {(() => {
@@ -585,12 +585,6 @@ export default function CompteScreen() {
               if (d > 0) parts.push(`${d} double${d > 1 ? 's' : ''}`);
               return ` · ${parts.join(' · ')}`;
             })()}
-          </Text>
-          <Text
-            variant="bodySmall"
-            style={{ color: theme.colors.outline, marginBottom: 8 }}
-          >
-            Une chambre = un lit. Un lit double peut accueillir l’hôte + 1 invité.
           </Text>
           {showCapacityEdit ? (
             <View style={{ gap: 8, marginBottom: 4 }}>
