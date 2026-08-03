@@ -2,6 +2,7 @@ import { View } from 'react-native';
 import { Chip } from 'react-native-paper';
 
 import type { BlogMention } from '@/lib/api';
+import { memberLabel } from '@/lib/memberLabel';
 import { useAppTheme } from '@/theme/paper';
 
 type Props = {
@@ -41,7 +42,7 @@ export function PostMetaChips({ tags = [], mentions = [] }: Props) {
           }}
           textStyle={{ color: theme.colors.onPrimaryContainer }}
         >
-          {m.display_name}
+          @{memberLabel(m)}
         </Chip>
       ))}
     </View>

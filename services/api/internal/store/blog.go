@@ -36,6 +36,7 @@ type BlogComment struct {
 type BlogMention struct {
 	UserSub     string `json:"user_sub"`
 	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
 }
 
 type BlogPost struct {
@@ -345,11 +346,11 @@ func (s *Store) loadBlogMentions(ctx context.Context, postIDs []string) (map[str
 		return out, nil
 	}
 	rows, err := s.pool.Query(ctx, `
-SELECT m.post_id::text, m.user_sub, COALESCE(p.display_name, '')
+SELECT m.post_id::text, m.user_sub, COALESCE(p.display_name, ''), COALESCE(p.email, '')
 FROM blog_post_mentions m
 LEFT JOIN user_profiles p ON p.user_sub = m.user_sub
 WHERE m.post_id = ANY($1::uuid[])
-ORDER BY COALESCE(NULLIF(p.display_name, ''), m.user_sub) ASC`, postIDs)
+ORDER BY COALESCE(NULLIF(p.display_name, ''), NULLIF(p.email, ''), m.user_sub) ASC`, postIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -357,11 +358,8 @@ ORDER BY COALESCE(NULLIF(p.display_name, ''), m.user_sub) ASC`, postIDs)
 	for rows.Next() {
 		var postID string
 		var m BlogMention
-		if err := rows.Scan(&postID, &m.UserSub, &m.DisplayName); err != nil {
+		if err := rows.Scan(&postID, &m.UserSub, &m.DisplayName, &m.Email); err != nil {
 			return nil, err
-		}
-		if m.DisplayName == "" {
-			m.DisplayName = m.UserSub
 		}
 		out[postID] = append(out[postID], m)
 	}

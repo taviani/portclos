@@ -18,6 +18,7 @@ import { BeaconRail } from '@/components/brand/BeaconRail';
 import { useBlogPosts, useCreateBlogPost, useUploadBlogPhoto } from '@/hooks/useBlog';
 import { useCurrentHouse, useHouseMembers } from '@/hooks/useHouses';
 import { blogPhotoUrl } from '@/lib/api';
+import { memberLabel } from '@/lib/memberLabel';
 import { useAppTheme } from '@/theme/paper';
 
 function formatWhen(iso: string): string {
@@ -231,7 +232,7 @@ export default function BlogListScreen() {
             const cover = p.photos[0];
             const tagLine = (p.tags ?? []).map((t) => `#${t}`).join(' ');
             const mentionLine = (p.mentions ?? [])
-              .map((m) => `@${m.display_name}`)
+              .map((m) => `@${memberLabel(m)}`)
               .join(' ');
             const reactionSummary = (p.reactions ?? [])
               .map((r) => `${r.emoji}${r.count > 1 ? r.count : ''}`)

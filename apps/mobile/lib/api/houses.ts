@@ -14,6 +14,7 @@ export type House = {
 export type HouseMember = {
   user_sub: string;
   display_name: string;
+  email: string;
   role: string;
   has_avatar: boolean;
 };

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -25,10 +26,13 @@ func (s *Store) migrateProfile(ctx context.Context) error {
 CREATE TABLE IF NOT EXISTS user_profiles (
   user_sub TEXT PRIMARY KEY,
   display_name TEXT NOT NULL DEFAULT '',
+  email TEXT NOT NULL DEFAULT '',
   avatar_key TEXT NOT NULL DEFAULT '',
   avatar_content_type TEXT NOT NULL DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE user_profiles
+  ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT '';
 `)
 	return err
 }
@@ -39,9 +43,23 @@ func (s *Store) GetOrCreateProfile(ctx context.Context, userSub string) (Profile
 INSERT INTO user_profiles (user_sub)
 VALUES ($1)
 ON CONFLICT (user_sub) DO UPDATE SET user_sub = EXCLUDED.user_sub
-RETURNING user_sub, display_name, avatar_key <> '', updated_at`, userSub,
-	).Scan(&p.Sub, &p.DisplayName, &p.HasAvatar, &p.UpdatedAt)
+RETURNING user_sub, display_name, email, avatar_key <> '', updated_at`, userSub,
+	).Scan(&p.Sub, &p.DisplayName, &p.Email, &p.HasAvatar, &p.UpdatedAt)
 	return p, err
+}
+
+func (s *Store) UpsertProfileEmail(ctx context.Context, userSub, email string) error {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, `
+INSERT INTO user_profiles (user_sub, email, updated_at)
+VALUES ($1, $2, now())
+ON CONFLICT (user_sub) DO UPDATE
+SET email = EXCLUDED.email, updated_at = now()
+WHERE user_profiles.email IS DISTINCT FROM EXCLUDED.email`, userSub, email)
+	return err
 }
 
 func (s *Store) UpdateDisplayName(ctx context.Context, userSub, name string) (Profile, error) {
@@ -51,8 +69,8 @@ INSERT INTO user_profiles (user_sub, display_name, updated_at)
 VALUES ($1, $2, now())
 ON CONFLICT (user_sub) DO UPDATE
 SET display_name = EXCLUDED.display_name, updated_at = now()
-RETURNING user_sub, display_name, avatar_key <> '', updated_at`, userSub, name,
-	).Scan(&p.Sub, &p.DisplayName, &p.HasAvatar, &p.UpdatedAt)
+RETURNING user_sub, display_name, email, avatar_key <> '', updated_at`, userSub, name,
+	).Scan(&p.Sub, &p.DisplayName, &p.Email, &p.HasAvatar, &p.UpdatedAt)
 	return p, err
 }
 
@@ -71,8 +89,8 @@ ON CONFLICT (user_sub) DO UPDATE
 SET avatar_key = EXCLUDED.avatar_key,
     avatar_content_type = EXCLUDED.avatar_content_type,
     updated_at = now()
-RETURNING user_sub, display_name, avatar_key <> '', updated_at`, userSub, key, contentType,
-	).Scan(&p.Sub, &p.DisplayName, &p.HasAvatar, &p.UpdatedAt)
+RETURNING user_sub, display_name, email, avatar_key <> '', updated_at`, userSub, key, contentType,
+	).Scan(&p.Sub, &p.DisplayName, &p.Email, &p.HasAvatar, &p.UpdatedAt)
 	return old, p, err
 }
 

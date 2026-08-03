@@ -1,4 +1,5 @@
 import { apiBaseUrl, authHeaders, getJSON } from '@/lib/api/http';
+import { uploadPhotoMultipart } from '@/lib/api/upload';
 
 export type BlogPhoto = {
   id: string;
@@ -25,6 +26,7 @@ export type BlogComment = {
 export type BlogMention = {
   user_sub: string;
   display_name: string;
+  email?: string;
 };
 
 export type BlogPost = {
@@ -97,29 +99,7 @@ export async function uploadBlogPhoto(
   uri: string,
   mimeType?: string | null,
 ): Promise<BlogPhoto> {
-  const form = new FormData();
-  const name = uri.split('/').pop() || 'photo.jpg';
-  form.append('photo', {
-    uri,
-    name,
-    type: mimeType || 'image/jpeg',
-  } as unknown as Blob);
-  const res = await fetch(`${apiBaseUrl()}/posts/${postId}/photos`, {
-    method: 'POST',
-    headers: authHeaders(accessToken),
-    body: form,
-  });
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) detail = body.error;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail);
-  }
-  return res.json() as Promise<BlogPhoto>;
+  return uploadPhotoMultipart(accessToken, `/posts/${postId}/photos`, uri, mimeType);
 }
 
 export function blogPhotoUrl(photoId: string): string {

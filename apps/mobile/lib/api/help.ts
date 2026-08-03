@@ -1,4 +1,5 @@
 import { apiBaseUrl, authHeaders, getJSON } from '@/lib/api/http';
+import { uploadPhotoMultipart } from '@/lib/api/upload';
 
 export type HelpPhoto = {
   id: string;
@@ -86,29 +87,7 @@ export async function uploadHelpPhoto(
   uri: string,
   mimeType?: string | null,
 ): Promise<HelpPhoto> {
-  const form = new FormData();
-  const name = uri.split('/').pop() || 'photo.jpg';
-  form.append('photo', {
-    uri,
-    name,
-    type: mimeType || 'image/jpeg',
-  } as unknown as Blob);
-  const res = await fetch(`${apiBaseUrl()}/help/${articleId}/photos`, {
-    method: 'POST',
-    headers: authHeaders(accessToken),
-    body: form,
-  });
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) detail = body.error;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail);
-  }
-  return res.json() as Promise<HelpPhoto>;
+  return uploadPhotoMultipart(accessToken, `/help/${articleId}/photos`, uri, mimeType);
 }
 
 export function helpPhotoUrl(photoId: string): string {
