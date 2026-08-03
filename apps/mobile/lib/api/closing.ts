@@ -13,6 +13,7 @@ export type ChecklistItem = {
   id: string;
   house_id: string;
   label: string;
+  description: string;
   optional: boolean;
   sort_order: number;
   created_at: string;
@@ -32,6 +33,7 @@ export type ClosingItem = {
   id: string;
   closing_id: string;
   label: string;
+  description: string;
   optional: boolean;
   sort_order: number;
   status: 'todo' | 'done' | 'skipped';
@@ -56,7 +58,7 @@ export async function fetchChecklistItems(
 export async function createChecklistItem(
   accessToken: string,
   houseId: string,
-  input: { label: string; optional?: boolean },
+  input: { label: string; description?: string; optional?: boolean },
 ): Promise<ChecklistItem> {
   return getJSON(`/houses/${houseId}/closing-checklist/items`, {
     method: 'POST',
@@ -71,7 +73,7 @@ export async function createChecklistItem(
 export async function updateChecklistItem(
   accessToken: string,
   itemId: string,
-  input: { label: string; optional: boolean },
+  input: { label: string; description: string; optional: boolean },
 ): Promise<ChecklistItem> {
   return getJSON(`/closing-checklist/items/${itemId}`, {
     method: 'PATCH',

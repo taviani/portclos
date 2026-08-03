@@ -54,10 +54,12 @@ CREATE INDEX IF NOT EXISTS blog_comments_fts_idx ON blog_comments
 CREATE INDEX IF NOT EXISTS blog_comments_trgm_idx ON blog_comments
   USING GIN (portclos_unaccent(lower(body)) gin_trgm_ops);
 
+DROP INDEX IF EXISTS closing_checklist_items_fts_idx;
+DROP INDEX IF EXISTS closing_checklist_items_trgm_idx;
 CREATE INDEX IF NOT EXISTS closing_checklist_items_fts_idx ON closing_checklist_items
-  USING GIN (to_tsvector('french', portclos_unaccent(coalesce(label,''))));
+  USING GIN (to_tsvector('french', portclos_unaccent(coalesce(label,'') || ' ' || coalesce(description,''))));
 CREATE INDEX IF NOT EXISTS closing_checklist_items_trgm_idx ON closing_checklist_items
-  USING GIN (portclos_unaccent(lower(label)) gin_trgm_ops);
+  USING GIN (portclos_unaccent(lower(coalesce(label,'') || ' ' || coalesce(description,''))) gin_trgm_ops);
 
 CREATE INDEX IF NOT EXISTS occupations_note_trgm_idx ON occupations
   USING GIN (portclos_unaccent(lower(note)) gin_trgm_ops);
@@ -190,18 +192,22 @@ closing_hits AS (
     'closing'::text AS type,
     c.id::text AS id,
     c.label AS title,
-    CASE WHEN c.optional THEN 'Étape optionnelle'::text ELSE 'Étape de fermeture'::text END AS snippet,
+    CASE
+      WHEN nullif(trim(c.description), '') IS NOT NULL THEN left(c.description, 120)
+      WHEN c.optional THEN 'Étape optionnelle'::text
+      ELSE 'Étape de fermeture'::text
+    END AS snippet,
     (
-      ts_rank(to_tsvector('french', portclos_unaccent(coalesce(c.label,''))), (SELECT tsq FROM q))
-      + similarity(portclos_unaccent(lower(c.label)), (SELECT q_plain FROM q))
+      ts_rank(to_tsvector('french', portclos_unaccent(coalesce(c.label,'') || ' ' || coalesce(c.description,''))), (SELECT tsq FROM q))
+      + similarity(portclos_unaccent(lower(coalesce(c.label,'') || ' ' || coalesce(c.description,''))), (SELECT q_plain FROM q))
     )::float8 AS rank
   FROM closing_checklist_items c, q
   WHERE c.house_id = $1
     AND (
-      to_tsvector('french', portclos_unaccent(coalesce(c.label,''))) @@ q.tsq
-      OR similarity(portclos_unaccent(lower(c.label)), q.q_plain) > 0.2
-      OR portclos_unaccent(lower(c.label)) % q.q_plain
-      OR portclos_unaccent(lower(c.label)) LIKE '%' || q.q_plain || '%'
+      to_tsvector('french', portclos_unaccent(coalesce(c.label,'') || ' ' || coalesce(c.description,''))) @@ q.tsq
+      OR similarity(portclos_unaccent(lower(coalesce(c.label,'') || ' ' || coalesce(c.description,''))), q.q_plain) > 0.2
+      OR portclos_unaccent(lower(coalesce(c.label,'') || ' ' || coalesce(c.description,''))) % q.q_plain
+      OR portclos_unaccent(lower(coalesce(c.label,'') || ' ' || coalesce(c.description,''))) LIKE '%' || q.q_plain || '%'
     )
 ),
 occupation_hits AS (

@@ -105,7 +105,7 @@ export function useCreateChecklistItem(houseId: string | undefined) {
   const { token } = useSession();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { label: string; optional?: boolean }) => {
+    mutationFn: async (input: { label: string; description?: string; optional?: boolean }) => {
       if (!token || !houseId) throw new Error('unauthorized');
       return createChecklistItem(token, houseId, input);
     },
@@ -120,10 +120,16 @@ export function useUpdateChecklistItem(houseId: string | undefined) {
   const { token } = useSession();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { itemId: string; label: string; optional: boolean }) => {
+    mutationFn: async (input: {
+      itemId: string;
+      label: string;
+      description: string;
+      optional: boolean;
+    }) => {
       if (!token) throw new Error('unauthorized');
       return updateChecklistItem(token, input.itemId, {
         label: input.label,
+        description: input.description,
         optional: input.optional,
       });
     },

@@ -39,8 +39,9 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		var body struct {
-			Label    string `json:"label"`
-			Optional bool   `json:"optional"`
+			Label       string `json:"label"`
+			Description string `json:"description"`
+			Optional    bool   `json:"optional"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
@@ -51,12 +52,17 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			http.Error(w, `{"error":"label_required"}`, http.StatusBadRequest)
 			return
 		}
+		description := strings.TrimSpace(body.Description)
+		if len([]rune(description)) > 500 {
+			http.Error(w, `{"error":"description_too_long"}`, http.StatusBadRequest)
+			return
+		}
 		order, err := db.NextChecklistSortOrder(r.Context(), houseID)
 		if err != nil {
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
-		it, err := db.CreateChecklistItem(r.Context(), houseID, label, body.Optional, order)
+		it, err := db.CreateChecklistItem(r.Context(), houseID, label, description, body.Optional, order)
 		if err != nil {
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
@@ -81,8 +87,9 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		var body struct {
-			Label    string `json:"label"`
-			Optional bool   `json:"optional"`
+			Label       string `json:"label"`
+			Description string `json:"description"`
+			Optional    bool   `json:"optional"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
@@ -93,7 +100,12 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			http.Error(w, `{"error":"label_required"}`, http.StatusBadRequest)
 			return
 		}
-		it, err := db.UpdateChecklistItem(r.Context(), itemID, houseID, label, body.Optional)
+		description := strings.TrimSpace(body.Description)
+		if len([]rune(description)) > 500 {
+			http.Error(w, `{"error":"description_too_long"}`, http.StatusBadRequest)
+			return
+		}
+		it, err := db.UpdateChecklistItem(r.Context(), itemID, houseID, label, description, body.Optional)
 		if err != nil {
 			writeStoreErr(w, err)
 			return
