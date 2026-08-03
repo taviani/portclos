@@ -4,6 +4,7 @@ import {
   createOccupation,
   deleteOccupation,
   fetchOccupations,
+  type OccupationGuest,
 } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
 import { useSession } from '@/providers/SessionProvider';
@@ -37,7 +38,12 @@ export function useCreateOccupation(houseId: string | undefined) {
   const { token } = useSession();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { start_date: string; end_date: string; note?: string }) => {
+    mutationFn: async (input: {
+      start_date: string;
+      end_date: string;
+      note?: string;
+      guests?: OccupationGuest[];
+    }) => {
       if (!token || !houseId) throw new Error('unauthorized');
       return createOccupation(token, houseId, input);
     },

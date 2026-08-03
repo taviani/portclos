@@ -5,6 +5,8 @@ import {
   fetchHouseMembers,
   fetchHouses,
   fetchMe,
+  updateHouse,
+  updateHouseBedCapacity,
   type House,
 } from '@/lib/api';
 import { getCurrentHouseId, setCurrentHouseId } from '@/lib/auth';
@@ -87,6 +89,43 @@ export function useSelectHouse() {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: queryKeys.currentHouseId });
+    },
+  });
+}
+
+export function useUpdateHouse(houseId: string | undefined) {
+  const { token } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: {
+      bed_capacity?: number;
+      single_beds?: number;
+      double_beds?: number;
+      address?: string;
+    }) => {
+      if (!token || !houseId) throw new Error('unauthorized');
+      return updateHouse(token, houseId, patch);
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: queryKeys.houses });
+      if (!houseId) return;
+      await qc.invalidateQueries({ queryKey: ['occupations', houseId] });
+    },
+  });
+}
+
+export function useUpdateHouseBedCapacity(houseId: string | undefined) {
+  const { token } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (bedCapacity: number) => {
+      if (!token || !houseId) throw new Error('unauthorized');
+      return updateHouseBedCapacity(token, houseId, bedCapacity);
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: queryKeys.houses });
+      if (!houseId) return;
+      await qc.invalidateQueries({ queryKey: ['occupations', houseId] });
     },
   });
 }

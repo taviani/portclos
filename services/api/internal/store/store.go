@@ -11,20 +11,26 @@ import (
 )
 
 type House struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Role      string    `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Role        string    `json:"role"`
+	Address     string    `json:"address"`
+	SingleBeds  int       `json:"single_beds"`
+	DoubleBeds  int       `json:"double_beds"`
+	BedCapacity int       `json:"bed_capacity"` // places = single + 2*double
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type Occupation struct {
-	ID        string    `json:"id"`
-	HouseID   string    `json:"house_id"`
-	UserSub   string    `json:"user_sub"`
-	StartDate string    `json:"start_date"`
-	EndDate   string    `json:"end_date"`
-	Note      string    `json:"note"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string            `json:"id"`
+	HouseID   string            `json:"house_id"`
+	UserSub   string            `json:"user_sub"`
+	StartDate string            `json:"start_date"`
+	EndDate   string            `json:"end_date"`
+	Note      string            `json:"note"`
+	CreatedAt time.Time         `json:"created_at"`
+	Guests    []OccupationGuest `json:"guests"`
+	Headcount int               `json:"headcount"`
 }
 
 type Store struct {
@@ -96,12 +102,18 @@ CREATE INDEX IF NOT EXISTS occupations_house_range_idx
 	if err := s.migrateHelp(ctx); err != nil {
 		return fmt.Errorf("migrate help: %w", err)
 	}
+	if err := s.migrateCapacity(ctx); err != nil {
+		return fmt.Errorf("migrate capacity: %w", err)
+	}
+	if err := s.migrateSearch(ctx); err != nil {
+		return fmt.Errorf("migrate search: %w", err)
+	}
 	return nil
 }
 
 func (s *Store) ListHouses(ctx context.Context, userSub string) ([]House, error) {
 	rows, err := s.pool.Query(ctx, `
-SELECT h.id::text, h.name, m.role, h.created_at
+SELECT h.id::text, h.name, m.role, h.address, h.single_beds, h.double_beds, h.bed_capacity, h.created_at
 FROM houses h
 JOIN house_members m ON m.house_id = h.id
 WHERE m.user_sub = $1
@@ -114,7 +126,7 @@ ORDER BY h.created_at ASC`, userSub)
 	var out []House
 	for rows.Next() {
 		var h House
-		if err := rows.Scan(&h.ID, &h.Name, &h.Role, &h.CreatedAt); err != nil {
+		if err := rows.Scan(&h.ID, &h.Name, &h.Role, &h.Address, &h.SingleBeds, &h.DoubleBeds, &h.BedCapacity, &h.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, h)
@@ -137,8 +149,8 @@ func (s *Store) CreateHouse(ctx context.Context, userSub, name string) (House, e
 	err = tx.QueryRow(ctx, `
 INSERT INTO houses (id, name, created_by)
 VALUES ($1, $2, $3)
-RETURNING id::text, name, created_at`, id, name, userSub,
-	).Scan(&h.ID, &h.Name, &h.CreatedAt)
+RETURNING id::text, name, address, single_beds, double_beds, bed_capacity, created_at`, id, name, userSub,
+	).Scan(&h.ID, &h.Name, &h.Address, &h.SingleBeds, &h.DoubleBeds, &h.BedCapacity, &h.CreatedAt)
 	if err != nil {
 		return House{}, err
 	}
@@ -157,11 +169,11 @@ VALUES ($1, $2, 'owner')`, id, userSub); err != nil {
 func (s *Store) GetHouseForMember(ctx context.Context, houseID, userSub string) (House, error) {
 	var h House
 	err := s.pool.QueryRow(ctx, `
-SELECT h.id::text, h.name, m.role, h.created_at
+SELECT h.id::text, h.name, m.role, h.address, h.single_beds, h.double_beds, h.bed_capacity, h.created_at
 FROM houses h
 JOIN house_members m ON m.house_id = h.id
 WHERE h.id = $1 AND m.user_sub = $2`, houseID, userSub,
-	).Scan(&h.ID, &h.Name, &h.Role, &h.CreatedAt)
+	).Scan(&h.ID, &h.Name, &h.Role, &h.Address, &h.SingleBeds, &h.DoubleBeds, &h.BedCapacity, &h.CreatedAt)
 	return h, err
 }
 
@@ -233,6 +245,7 @@ ORDER BY start_date ASC, created_at ASC`, houseID, from, to)
 	defer rows.Close()
 
 	var out []Occupation
+	ids := make([]string, 0)
 	for rows.Next() {
 		var o Occupation
 		var start, end time.Time
@@ -241,30 +254,27 @@ ORDER BY start_date ASC, created_at ASC`, houseID, from, to)
 		}
 		o.StartDate = formatDate(start)
 		o.EndDate = formatDate(end)
+		o.Guests = []OccupationGuest{}
 		out = append(out, o)
+		ids = append(ids, o.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	if out == nil {
-		out = []Occupation{}
+		return []Occupation{}, nil
 	}
-	return out, rows.Err()
-}
-
-func (s *Store) CreateOccupation(ctx context.Context, houseID, userSub string, start, end time.Time, note string) (Occupation, error) {
-	id := uuid.NewString()
-	var o Occupation
-	var startOut, endOut time.Time
-	err := s.pool.QueryRow(ctx, `
-INSERT INTO occupations (id, house_id, user_sub, start_date, end_date, note)
-VALUES ($1, $2, $3, $4::date, $5::date, $6)
-RETURNING id::text, house_id::text, user_sub, start_date, end_date, note, created_at`,
-		id, houseID, userSub, start, end, note,
-	).Scan(&o.ID, &o.HouseID, &o.UserSub, &startOut, &endOut, &o.Note, &o.CreatedAt)
+	guests, err := s.loadOccupationGuests(ctx, ids)
 	if err != nil {
-		return Occupation{}, err
+		return nil, err
 	}
-	o.StartDate = formatDate(startOut)
-	o.EndDate = formatDate(endOut)
-	return o, nil
+	for i := range out {
+		if g, ok := guests[out[i].ID]; ok {
+			out[i].Guests = g
+		}
+		out[i].Headcount = 1 + len(out[i].Guests)
+	}
+	return out, nil
 }
 
 func (s *Store) DeleteOccupation(ctx context.Context, occupationID, userSub string) error {

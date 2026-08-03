@@ -62,13 +62,31 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthGate>
-        <Stack>
-          <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-        </Stack>
+        <RootStack />
       </AuthGate>
     </ThemeProvider>
+  );
+}
+
+function RootStack() {
+  return (
+    <Stack
+      screenOptions={{
+        headerShadowVisible: false,
+        headerTitleStyle: { fontWeight: '700' },
+      }}
+    >
+      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false, title: '' }} />
+      <Stack.Screen
+        name="compte"
+        options={{
+          title: 'Compte',
+          headerBackButtonDisplayMode: 'minimal',
+        }}
+      />
+      <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+    </Stack>
   );
 }
 
