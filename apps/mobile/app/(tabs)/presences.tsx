@@ -611,9 +611,7 @@ export default function PresencesScreen() {
       <Text style={styles.guestTitle}>
         Invités (optionnel) · total {guestHeadcount} pers.
       </Text>
-      <Text style={styles.guestHint}>
-        Chambre seule, ou lit double partagé avec toi ou un autre invité.
-      </Text>
+      <Text style={styles.guestHint}>Précise le couchage de chaque invité.</Text>
       {guests.map((g, idx) => {
         const isAlone = (g.room || 'alone') !== 'shared';
         const withHost = g.room === 'shared' && g.share_with === 'host';
