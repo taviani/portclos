@@ -43,7 +43,7 @@
     <path d="M108 348H212L208 318H112L108 348Z" fill="#9A8168"/>
     <path d="M116 288H204L202 248H118L116 288Z" fill="#F2C94C"/>
     <path d="M118 248H202L200 208H120L118 248Z" fill="#141414"/>
-    <text x="160" y="234" text-anchor="middle" fill="#F7F4EA" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="1.5">JOLIGUET</text>
+    <text x="160" y="234" text-anchor="middle" fill="#F7F4EA" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="0.8">PORTCLOS</text>
     <path d="M120 208H200L196 128H124L120 208Z" fill="#F5D76E"/>
     <path d="M124 128H196L194 112H126L124 128Z" fill="#E8C84A"/>
     <path d="M122 112H198" stroke="#F0D060" stroke-width="3" stroke-linecap="round"/>
