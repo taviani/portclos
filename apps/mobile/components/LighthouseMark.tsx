@@ -18,7 +18,7 @@ type Props = {
   glowOpacity?: number;
 };
 
-/** Stylized Joliguet beacon — yellow / black bands on red rock. */
+/** Stylized beacon mark — yellow / black bands on red rock. */
 export function LighthouseMark({ width = 280, height = 368, glowOpacity = 1 }: Props) {
   return (
     <Svg width={width} height={height} viewBox="0 0 320 420">
@@ -94,12 +94,12 @@ export function LighthouseMark({ width = 280, height = 368, glowOpacity = 1 }: P
           x="160"
           y="234"
           fill="#F7F4EA"
-          fontSize="15"
+          fontSize="13"
           fontWeight="700"
           textAnchor="middle"
-          letterSpacing="1.5"
+          letterSpacing="0.8"
         >
-          JOLIGUET
+          PORTCLOS
         </SvgText>
 
         <Path d="M120 208H200L196 128H124L120 208Z" fill="#F5D76E" />
