@@ -3,6 +3,8 @@ import { ActionSheetIOS, Alert, Platform, StyleSheet, View } from 'react-native'
 import { type Href, router, useNavigation } from 'expo-router';
 import { Appbar, Button, Text, ActivityIndicator } from 'react-native-paper';
 
+import { BeaconBar } from '@/components/brand/BeaconRail';
+import { LighthouseMark } from '@/components/LighthouseMark';
 import { MenuRow } from '@/components/MenuRow';
 import { useCurrentHouse } from '@/hooks/useHouses';
 import { useSession } from '@/providers/SessionProvider';
@@ -90,24 +92,33 @@ export default function MaisonHubScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Text
-        variant="labelLarge"
-        style={{ color: theme.colors.primary, letterSpacing: 0.6, textTransform: 'uppercase' }}
-      >
-        {house.role === 'owner' ? 'Propriétaire' : 'Membre'}
-      </Text>
-      <Text
-        variant="headlineMedium"
-        style={{
-          color: theme.colors.onBackground,
-          fontWeight: '800',
-          marginTop: 4,
-          marginBottom: 20,
-          letterSpacing: -0.4,
-        }}
-      >
-        Que veux-tu faire ?
-      </Text>
+      <View style={styles.hero}>
+        <View style={{ flex: 1 }}>
+          <Text
+            variant="labelLarge"
+            style={{
+              color: theme.colors.secondary,
+              letterSpacing: 0.6,
+              textTransform: 'uppercase',
+            }}
+          >
+            {house.role === 'owner' ? 'Propriétaire' : 'Membre'}
+          </Text>
+          <Text
+            variant="headlineMedium"
+            style={{
+              color: theme.colors.onBackground,
+              fontWeight: '800',
+              marginTop: 4,
+              letterSpacing: -0.4,
+            }}
+          >
+            Que veux-tu faire ?
+          </Text>
+          <BeaconBar style={{ marginTop: 10 }} />
+        </View>
+        <LighthouseMark width={72} height={94} glowOpacity={0.55} />
+      </View>
       <MenuRow
         title="Blog"
         subtitle="Publier, commenter, réagir"
@@ -144,6 +155,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 8,
+  },
+  hero: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 18,
+    gap: 8,
   },
   center: {
     flex: 1,

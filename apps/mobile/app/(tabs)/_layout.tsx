@@ -1,7 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { Redirect, Tabs } from 'expo-router';
 import React from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { ActivityIndicator } from 'react-native-paper';
 
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
@@ -32,9 +32,11 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.outlineVariant,
+          borderTopWidth: StyleSheet.hairlineWidth,
         },
         headerStyle: { backgroundColor: theme.colors.background },
         headerTintColor: theme.colors.onBackground,
+        headerTitleStyle: { fontWeight: '700' },
         headerShadowVisible: false,
         headerShown: useClientOnlyValue(false, true),
       }}>

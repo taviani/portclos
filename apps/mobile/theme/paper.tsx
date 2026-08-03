@@ -10,8 +10,9 @@ import {
   type MD3Theme,
 } from 'react-native-paper';
 
-/** Seed — teal “port / maison” (not purple). */
-export const PORTCLOS_SOURCE = '#0E7C7B';
+import { Lighthouse, PORTCLOS_SOURCE } from '@/theme/lighthouse';
+
+export { PORTCLOS_SOURCE, Lighthouse, BLOG_SUGGESTED_TAGS } from '@/theme/lighthouse';
 
 export type AppTheme = MD3Theme;
 
@@ -20,6 +21,64 @@ export function useAppTheme() {
 }
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
+
+function lighthouseColors(dark: boolean, generated: MD3Theme['colors']): MD3Theme['colors'] {
+  if (dark) {
+    return {
+      ...generated,
+      primary: Lighthouse.beacon,
+      onPrimary: Lighthouse.night,
+      primaryContainer: Lighthouse.beaconDim,
+      onPrimaryContainer: Lighthouse.beaconSoft,
+      secondary: Lighthouse.seaFoam,
+      onSecondary: Lighthouse.night,
+      secondaryContainer: Lighthouse.seaDeep,
+      onSecondaryContainer: Lighthouse.seaMist,
+      tertiary: Lighthouse.rockSoft,
+      background: Lighthouse.night,
+      onBackground: Lighthouse.foam,
+      surface: Lighthouse.nightMid,
+      onSurface: Lighthouse.foam,
+      surfaceVariant: Lighthouse.nightVariant,
+      onSurfaceVariant: Lighthouse.nightMuted,
+      outline: Lighthouse.nightOutline,
+      outlineVariant: Lighthouse.nightOutlineVariant,
+      elevation: {
+        ...generated.elevation,
+        level1: Lighthouse.nightLift1,
+        level2: Lighthouse.nightLift2,
+        level3: Lighthouse.nightLift3,
+      },
+    };
+  }
+
+  return {
+    ...generated,
+    primary: Lighthouse.sea,
+    onPrimary: '#FFFFFF',
+    primaryContainer: Lighthouse.seaMist,
+    onPrimaryContainer: Lighthouse.seaInk,
+    secondary: Lighthouse.beaconDeep,
+    onSecondary: Lighthouse.beaconInk,
+    secondaryContainer: Lighthouse.beaconSoft,
+    onSecondaryContainer: Lighthouse.beaconOnContainer,
+    tertiary: Lighthouse.rock,
+    background: Lighthouse.mistBg,
+    onBackground: Lighthouse.mistInk,
+    surface: Lighthouse.mistSurface,
+    onSurface: Lighthouse.mistInk,
+    surfaceVariant: Lighthouse.mistVariant,
+    onSurfaceVariant: Lighthouse.mistMuted,
+    outline: Lighthouse.mistOutline,
+    outlineVariant: Lighthouse.mistOutlineVariant,
+    elevation: {
+      ...generated.elevation,
+      level1: '#FFFFFF',
+      level2: '#F0F7F7',
+      level3: '#E6F1F1',
+    },
+  };
+}
 
 export function PortclosPaperProvider({ children }: { children: ReactNode }) {
   const colorScheme = useColorScheme();
@@ -31,13 +90,13 @@ export function PortclosPaperProvider({ children }: { children: ReactNode }) {
   const paperTheme = useMemo(() => {
     const dark = colorScheme === 'dark';
     const base = dark ? MD3DarkTheme : MD3LightTheme;
-    const colors = dark ? theme.dark : theme.light;
+    const generated = dark ? theme.dark : theme.light;
     return {
       ...base,
-      roundness: 16,
+      roundness: 18,
       colors: {
         ...base.colors,
-        ...colors,
+        ...lighthouseColors(dark, generated),
       },
     } satisfies MD3Theme;
   }, [colorScheme, theme.dark, theme.light]);

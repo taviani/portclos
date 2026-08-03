@@ -5,10 +5,20 @@ Shared house app: occupation calendar, open/close checklists, todos, posts & pho
 ## Layout
 
 ```
-apps/mobile/       Expo (React Native) — primary client
-services/api/      Go API — house domain + JWT auth against the shared OIDC issuer
-docker-compose.yml Postgres + API
+apps/mobile/                 Expo client
+  app/                       routes (screens stay thin)
+  components/                UI (brand/, blog/, …)
+  hooks/                     TanStack Query by domain
+  lib/api/                   HTTP clients split by domain (houses, blog, …)
+  theme/                     brand tokens (lighthouse.ts) → Paper (paper.tsx)
+services/api/internal/
+  httpserver/                HTTP adapters only
+  store/                     SQL + domain rules (blog tags, membership, …)
+  media/                     file storage
+docker-compose.yml
 ```
+
+Visual / brand changes: edit `apps/mobile/theme/lighthouse.ts` first, then Paper mappings. Avoid one-off hex in screens.
 
 ## Prerequisites
 
@@ -39,7 +49,8 @@ go run ./cmd/server
 - `GET /houses/{id}` — member-only
 - `GET|POST /houses/{id}/occupations` — occupation ranges (`from`/`to` or body `start_date`/`end_date`)
 - `DELETE /occupations/{id}` — delete own occupation
-- `GET|POST /houses/{id}/posts` · `GET|DELETE /posts/{id}` — house blog
+- `GET /houses/{id}/members` — house roster (display names)
+- `GET|POST /houses/{id}/posts` · `GET|DELETE /posts/{id}` — house blog (`tags`, `mentions` on create)
 - `POST /posts/{id}/photos` · `GET /blog-photos/{id}` · `POST /posts/{id}/comments` · `PUT|DELETE /posts/{id}/reactions`
 - `GET|POST /houses/{id}/help` · `GET|PATCH|DELETE /help/{id}` · `POST /help/{id}/photos` · `GET /help-photos/{id}`
 - `GET|POST /houses/{id}/closing-checklist/items` — closing checklist template (optional items + hint photos)

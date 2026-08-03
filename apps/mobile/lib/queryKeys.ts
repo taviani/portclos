@@ -8,6 +8,7 @@ export const queryKeys = {
   checklistItems: (houseId: string) => ['checklistItems', houseId] as const,
   closings: (houseId: string) => ['closings', houseId] as const,
   closing: (closingId: string) => ['closing', closingId] as const,
+  houseMembers: (houseId: string) => ['houseMembers', houseId] as const,
   blogPosts: (houseId: string) => ['blogPosts', houseId] as const,
   blogPost: (postId: string) => ['blogPost', postId] as const,
   helpArticles: (houseId: string) => ['helpArticles', houseId] as const,

@@ -12,12 +12,11 @@ import {
 } from 'react-native-paper';
 
 import { AuthedImage } from '@/components/AuthedImage';
-import {
-  useBlogPosts,
-  useCreateBlogPost,
-  useUploadBlogPhoto,
-} from '@/hooks/useBlog';
-import { useCurrentHouse } from '@/hooks/useHouses';
+import { MemberMentionPicker } from '@/components/blog/MemberMentionPicker';
+import { TagPicker } from '@/components/blog/TagPicker';
+import { BeaconRail } from '@/components/brand/BeaconRail';
+import { useBlogPosts, useCreateBlogPost, useUploadBlogPhoto } from '@/hooks/useBlog';
+import { useCurrentHouse, useHouseMembers } from '@/hooks/useHouses';
 import { blogPhotoUrl } from '@/lib/api';
 import { useAppTheme } from '@/theme/paper';
 
@@ -35,17 +34,31 @@ export default function BlogListScreen() {
   const theme = useAppTheme();
   const { house, isLoading } = useCurrentHouse();
   const posts = useBlogPosts(house?.id);
+  const members = useHouseMembers(house?.id);
   const createPost = useCreateBlogPost(house?.id);
   const uploadPhoto = useUploadBlogPhoto(house?.id);
 
   const [composing, setComposing] = useState(false);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagDraft, setTagDraft] = useState('');
+  const [mentions, setMentions] = useState<string[]>([]);
   const [pendingPhoto, setPendingPhoto] = useState<{
     uri: string;
     mimeType?: string | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const resetComposer = () => {
+    setTitle('');
+    setBody('');
+    setTags([]);
+    setTagDraft('');
+    setMentions([]);
+    setPendingPhoto(null);
+    setComposing(false);
+  };
 
   const pickPhoto = () => {
     Alert.alert('Photo', undefined, [
@@ -104,6 +117,8 @@ export default function BlogListScreen() {
       const post = await createPost.mutateAsync({
         title: title.trim(),
         body: body.trim(),
+        tags,
+        mentions,
       });
       if (pendingPhoto) {
         await uploadPhoto.mutateAsync({
@@ -112,10 +127,7 @@ export default function BlogListScreen() {
           mimeType: pendingPhoto.mimeType,
         });
       }
-      setTitle('');
-      setBody('');
-      setPendingPhoto(null);
-      setComposing(false);
+      resetComposer();
       router.push(`/(tabs)/maison/blog/${post.id}` as Href);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'publication impossible');
@@ -166,9 +178,24 @@ export default function BlogListScreen() {
               onChangeText={setBody}
               multiline
               numberOfLines={4}
-              style={{ backgroundColor: theme.colors.surface, marginBottom: 8 }}
+              style={{ backgroundColor: theme.colors.surface, marginBottom: 12 }}
             />
-            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+
+            <TagPicker
+              tags={tags}
+              draft={tagDraft}
+              onDraftChange={setTagDraft}
+              onChange={setTags}
+              onInvalid={setError}
+            />
+            <MemberMentionPicker
+              members={members.data ?? []}
+              selected={mentions}
+              loading={members.isLoading}
+              onChange={setMentions}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginVertical: 12 }}>
               <Button mode="outlined" icon="image" onPress={pickPhoto}>
                 {pendingPhoto ? 'Photo choisie' : 'Ajouter une photo'}
               </Button>
@@ -179,7 +206,7 @@ export default function BlogListScreen() {
               ) : null}
             </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Button mode="text" onPress={() => setComposing(false)}>
+              <Button mode="text" onPress={resetComposer}>
                 Annuler
               </Button>
               <Button
@@ -202,38 +229,46 @@ export default function BlogListScreen() {
         ) : (
           (posts.data ?? []).map((p) => {
             const cover = p.photos[0];
-            const reactionSummary = p.reactions
+            const tagLine = (p.tags ?? []).map((t) => `#${t}`).join(' ');
+            const mentionLine = (p.mentions ?? [])
+              .map((m) => `@${m.display_name}`)
+              .join(' ');
+            const reactionSummary = (p.reactions ?? [])
               .map((r) => `${r.emoji}${r.count > 1 ? r.count : ''}`)
               .join(' ');
+            const extras = [tagLine, mentionLine, reactionSummary].filter(Boolean).join(' · ');
             return (
-              <List.Item
-                key={p.id}
-                title={p.title}
-                description={`${p.author_name || 'Membre'} · ${formatWhen(p.created_at)}${
-                  reactionSummary ? `\n${reactionSummary}` : ''
-                }`}
-                descriptionNumberOfLines={3}
-                onPress={() => router.push(`/(tabs)/maison/blog/${p.id}` as Href)}
-                left={() =>
-                  cover ? (
-                    <AuthedImage
-                      url={blogPhotoUrl(cover.id)}
-                      cacheKey={`blog-thumb-${cover.id}`}
-                      style={styles.thumb}
-                    />
-                  ) : (
-                    <List.Icon icon="newspaper-variant-outline" color={theme.colors.primary} />
-                  )
-                }
-                right={(props) => <List.Icon {...props} icon="chevron-right" />}
-                style={{
-                  backgroundColor: theme.colors.elevation.level1,
-                  borderRadius: theme.roundness,
-                  marginBottom: 10,
-                }}
-                titleStyle={{ fontWeight: '700', color: theme.colors.onSurface }}
-                descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
-              />
+              <View key={p.id} style={styles.row}>
+                <BeaconRail />
+                <List.Item
+                  title={p.title}
+                  description={`${p.author_name || 'Membre'} · ${formatWhen(p.created_at)}${
+                    extras ? `\n${extras}` : ''
+                  }`}
+                  descriptionNumberOfLines={4}
+                  onPress={() => router.push(`/(tabs)/maison/blog/${p.id}` as Href)}
+                  left={() =>
+                    cover ? (
+                      <AuthedImage
+                        url={blogPhotoUrl(cover.id)}
+                        cacheKey={`blog-thumb-${cover.id}`}
+                        style={styles.thumb}
+                      />
+                    ) : (
+                      <List.Icon icon="newspaper-variant-outline" color={theme.colors.primary} />
+                    )
+                  }
+                  right={(props) => <List.Icon {...props} icon="chevron-right" />}
+                  style={{
+                    flex: 1,
+                    backgroundColor: theme.colors.elevation.level1,
+                    borderTopRightRadius: theme.roundness,
+                    borderBottomRightRadius: theme.roundness,
+                  }}
+                  titleStyle={{ fontWeight: '700', color: theme.colors.onSurface }}
+                  descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
+                />
+              </View>
             );
           })
         )}
@@ -269,6 +304,10 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  row: {
+    flexDirection: 'row',
+    marginBottom: 10,
   },
   thumb: {
     width: 56,

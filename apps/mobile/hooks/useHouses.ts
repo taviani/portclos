@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { createHouse, fetchHouses, fetchMe, type House } from '@/lib/api';
+import {
+  createHouse,
+  fetchHouseMembers,
+  fetchHouses,
+  fetchMe,
+  type House,
+} from '@/lib/api';
 import { getCurrentHouseId, setCurrentHouseId } from '@/lib/auth';
 import { queryKeys } from '@/lib/queryKeys';
 import { useSession } from '@/providers/SessionProvider';
@@ -81,7 +87,18 @@ export function useSelectHouse() {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: queryKeys.currentHouseId });
-      // Future domain caches keyed by houseId can be left warm or cleared selectively.
+    },
+  });
+}
+
+export function useHouseMembers(houseId: string | undefined) {
+  const { token } = useSession();
+  return useQuery({
+    queryKey: queryKeys.houseMembers(houseId ?? ''),
+    enabled: !!token && !!houseId,
+    queryFn: async () => {
+      if (!token || !houseId) throw new Error('unauthorized');
+      return fetchHouseMembers(token, houseId);
     },
   });
 }

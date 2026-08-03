@@ -22,6 +22,7 @@ import Svg, {
 } from 'react-native-svg';
 
 import { LighthouseMark } from '@/components/LighthouseMark';
+import { Lighthouse } from '@/theme/lighthouse';
 
 const MIN_MS = 2200;
 const FADE_MS = 520;
@@ -122,14 +123,14 @@ export function AnimatedSplash({ ready, children }: Props) {
         <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
           <Defs>
             <LinearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#020B12" />
-              <Stop offset="0.42" stopColor="#042A32" />
-              <Stop offset="0.78" stopColor="#0A5556" />
-              <Stop offset="1" stopColor="#0E7C7B" />
+              <Stop offset="0" stopColor={Lighthouse.night} />
+              <Stop offset="0.42" stopColor={Lighthouse.nightMid} />
+              <Stop offset="0.78" stopColor={Lighthouse.seaDeep} />
+              <Stop offset="1" stopColor={Lighthouse.sea} />
             </LinearGradient>
             <RadialGradient id="horizon" cx="50%" cy="62%" rx="70%" ry="28%">
-              <Stop offset="0" stopColor="#1AB0A8" stopOpacity={0.35} />
-              <Stop offset="1" stopColor="#1AB0A8" stopOpacity={0} />
+              <Stop offset="0" stopColor={Lighthouse.seaFoam} stopOpacity={0.35} />
+              <Stop offset="1" stopColor={Lighthouse.seaFoam} stopOpacity={0} />
             </RadialGradient>
           </Defs>
           <Rect x="0" y="0" width="100%" height="100%" fill="url(#bg)" />
@@ -155,13 +156,13 @@ export function AnimatedSplash({ ready, children }: Props) {
                   y2="220"
                   gradientUnits="userSpaceOnUse"
                 >
-                  <Stop offset="0" stopColor="#FFE6A0" stopOpacity={0.85} />
-                  <Stop offset="0.55" stopColor="#F5C542" stopOpacity={0.22} />
-                  <Stop offset="1" stopColor="#F5C542" stopOpacity={0} />
+                  <Stop offset="0" stopColor={Lighthouse.beaconSoft} stopOpacity={0.85} />
+                  <Stop offset="0.55" stopColor={Lighthouse.beacon} stopOpacity={0.22} />
+                  <Stop offset="1" stopColor={Lighthouse.beacon} stopOpacity={0} />
                 </LinearGradient>
               </Defs>
               <Path d="M210 18 L320 220 L100 220 Z" fill="url(#beam)" />
-              <Path d="M210 18 L250 220 L170 220 Z" fill="#FFF4C8" opacity={0.35} />
+              <Path d="M210 18 L250 220 L170 220 Z" fill={Lighthouse.beaconSoft} opacity={0.35} />
             </Svg>
           </AnimatedView>
 
@@ -182,7 +183,7 @@ export function AnimatedSplash({ ready, children }: Props) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#020B12',
+    backgroundColor: Lighthouse.night,
   },
   stage: {
     position: 'absolute',
@@ -200,7 +201,7 @@ const styles = StyleSheet.create({
     width: 240,
     height: 240,
     borderRadius: 120,
-    backgroundColor: '#F5C542',
+    backgroundColor: Lighthouse.beacon,
   },
   beamPivot: {
     position: 'absolute',
@@ -215,7 +216,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   brand: {
-    color: '#F4F7F6',
+    color: Lighthouse.foam,
     fontSize: 38,
     fontWeight: '800',
     letterSpacing: -0.8,

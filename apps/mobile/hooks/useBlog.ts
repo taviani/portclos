@@ -42,7 +42,12 @@ export function useCreateBlogPost(houseId: string | undefined) {
   const { token } = useSession();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { title: string; body?: string }) => {
+    mutationFn: async (input: {
+      title: string;
+      body?: string;
+      tags?: string[];
+      mentions?: string[];
+    }) => {
       if (!token || !houseId) throw new Error('unauthorized');
       return createBlogPost(token, houseId, input);
     },

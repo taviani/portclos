@@ -33,6 +33,11 @@ type BlogComment struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type BlogMention struct {
+	UserSub     string `json:"user_sub"`
+	DisplayName string `json:"display_name"`
+}
+
 type BlogPost struct {
 	ID         string         `json:"id"`
 	HouseID    string         `json:"house_id"`
@@ -42,6 +47,8 @@ type BlogPost struct {
 	Body       string         `json:"body"`
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
+	Tags       []string       `json:"tags"`
+	Mentions   []BlogMention  `json:"mentions"`
 	Photos     []BlogPhoto    `json:"photos"`
 	Reactions  []BlogReaction `json:"reactions"`
 	Comments   []BlogComment  `json:"comments,omitempty"`
@@ -93,6 +100,20 @@ CREATE TABLE IF NOT EXISTS blog_reactions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (post_id, user_sub)
 );
+
+CREATE TABLE IF NOT EXISTS blog_post_tags (
+  post_id UUID NOT NULL REFERENCES blog_posts (id) ON DELETE CASCADE,
+  tag TEXT NOT NULL,
+  PRIMARY KEY (post_id, tag)
+);
+CREATE INDEX IF NOT EXISTS blog_post_tags_tag_idx ON blog_post_tags (tag);
+
+CREATE TABLE IF NOT EXISTS blog_post_mentions (
+  post_id UUID NOT NULL REFERENCES blog_posts (id) ON DELETE CASCADE,
+  user_sub TEXT NOT NULL,
+  PRIMARY KEY (post_id, user_sub)
+);
+CREATE INDEX IF NOT EXISTS blog_post_mentions_user_idx ON blog_post_mentions (user_sub);
 `)
 	return err
 }
@@ -117,6 +138,8 @@ ORDER BY created_at DESC LIMIT 100`, houseID)
 		}
 		p.Photos = []BlogPhoto{}
 		p.Reactions = []BlogReaction{}
+		p.Tags = []string{}
+		p.Mentions = []BlogMention{}
 		posts = append(posts, p)
 		ids = append(ids, p.ID)
 		subs = append(subs, p.AuthorSub)
@@ -140,6 +163,14 @@ ORDER BY created_at DESC LIMIT 100`, houseID)
 	if err != nil {
 		return nil, err
 	}
+	tags, err := s.loadBlogTags(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	mentions, err := s.loadBlogMentions(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	for i := range posts {
 		posts[i].AuthorName = names[posts[i].AuthorSub]
 		if posts[i].AuthorName == "" {
@@ -151,28 +182,75 @@ ORDER BY created_at DESC LIMIT 100`, houseID)
 		if re, ok := reactions[posts[i].ID]; ok {
 			posts[i].Reactions = re
 		}
+		if t, ok := tags[posts[i].ID]; ok {
+			posts[i].Tags = t
+		}
+		if m, ok := mentions[posts[i].ID]; ok {
+			posts[i].Mentions = m
+		}
 	}
 	return posts, nil
 }
 
-func (s *Store) CreateBlogPost(ctx context.Context, houseID, authorSub, title, body string) (BlogPost, error) {
+func (s *Store) CreateBlogPost(
+	ctx context.Context,
+	houseID, authorSub, title, body string,
+	tags []string,
+	mentionSubs []string,
+) (BlogPost, error) {
 	id := uuid.NewString()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return BlogPost{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	var p BlogPost
-	err := s.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 INSERT INTO blog_posts (id, house_id, author_sub, title, body)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING id::text, house_id::text, author_sub, title, body, created_at, updated_at`,
 		id, houseID, authorSub, title, body,
 	).Scan(&p.ID, &p.HouseID, &p.AuthorSub, &p.Title, &p.Body, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		return BlogPost{}, err
+	}
+	for _, tag := range tags {
+		if _, err := tx.Exec(ctx, `
+INSERT INTO blog_post_tags (post_id, tag) VALUES ($1, $2)
+ON CONFLICT DO NOTHING`, id, tag); err != nil {
+			return BlogPost{}, err
+		}
+	}
+	for _, sub := range mentionSubs {
+		if _, err := tx.Exec(ctx, `
+INSERT INTO blog_post_mentions (post_id, user_sub) VALUES ($1, $2)
+ON CONFLICT DO NOTHING`, id, sub); err != nil {
+			return BlogPost{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return BlogPost{}, err
+	}
+
 	p.Photos = []BlogPhoto{}
 	p.Reactions = []BlogReaction{}
 	p.Comments = []BlogComment{}
+	p.Tags = tags
+	if p.Tags == nil {
+		p.Tags = []string{}
+	}
+	mentions, _ := s.loadBlogMentions(ctx, []string{id})
+	p.Mentions = mentions[id]
+	if p.Mentions == nil {
+		p.Mentions = []BlogMention{}
+	}
 	names, _ := s.DisplayNames(ctx, []string{authorSub})
 	p.AuthorName = names[authorSub]
 	if p.AuthorName == "" {
 		p.AuthorName = authorSub
 	}
-	return p, err
+	return p, nil
 }
 
 func (s *Store) GetBlogPostHouseID(ctx context.Context, postID string) (string, error) {
@@ -214,12 +292,80 @@ FROM blog_posts WHERE id = $1`, postID,
 	if p.Reactions == nil {
 		p.Reactions = []BlogReaction{}
 	}
+	tags, err := s.loadBlogTags(ctx, []string{p.ID})
+	if err != nil {
+		return BlogPost{}, err
+	}
+	p.Tags = tags[p.ID]
+	if p.Tags == nil {
+		p.Tags = []string{}
+	}
+	mentions, err := s.loadBlogMentions(ctx, []string{p.ID})
+	if err != nil {
+		return BlogPost{}, err
+	}
+	p.Mentions = mentions[p.ID]
+	if p.Mentions == nil {
+		p.Mentions = []BlogMention{}
+	}
 	comments, err := s.ListBlogComments(ctx, p.ID)
 	if err != nil {
 		return BlogPost{}, err
 	}
 	p.Comments = comments
 	return p, nil
+}
+
+func (s *Store) loadBlogTags(ctx context.Context, postIDs []string) (map[string][]string, error) {
+	out := map[string][]string{}
+	if len(postIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+SELECT post_id::text, tag FROM blog_post_tags
+WHERE post_id = ANY($1::uuid[])
+ORDER BY tag ASC`, postIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var postID, tag string
+		if err := rows.Scan(&postID, &tag); err != nil {
+			return nil, err
+		}
+		out[postID] = append(out[postID], tag)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) loadBlogMentions(ctx context.Context, postIDs []string) (map[string][]BlogMention, error) {
+	out := map[string][]BlogMention{}
+	if len(postIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+SELECT m.post_id::text, m.user_sub, COALESCE(p.display_name, '')
+FROM blog_post_mentions m
+LEFT JOIN user_profiles p ON p.user_sub = m.user_sub
+WHERE m.post_id = ANY($1::uuid[])
+ORDER BY COALESCE(NULLIF(p.display_name, ''), m.user_sub) ASC`, postIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var postID string
+		var m BlogMention
+		if err := rows.Scan(&postID, &m.UserSub, &m.DisplayName); err != nil {
+			return nil, err
+		}
+		if m.DisplayName == "" {
+			m.DisplayName = m.UserSub
+		}
+		out[postID] = append(out[postID], m)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) DeleteBlogPost(ctx context.Context, postID, userSub string) error {

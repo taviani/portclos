@@ -126,6 +126,19 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
+	pr.Get("/houses/{id}/members", func(w http.ResponseWriter, r *http.Request) {
+		_, houseID, ok := memberHouse(w, r, db)
+		if !ok {
+			return
+		}
+		list, err := db.ListHouseMembers(r.Context(), houseID)
+		if err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, list)
+	})
+
 	// Blog
 	pr.Get("/houses/{id}/posts", func(w http.ResponseWriter, r *http.Request) {
 		user, houseID, ok := memberHouse(w, r, db)
@@ -146,8 +159,10 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		var body struct {
-			Title string `json:"title"`
-			Body  string `json:"body"`
+			Title    string   `json:"title"`
+			Body     string   `json:"body"`
+			Tags     []string `json:"tags"`
+			Mentions []string `json:"mentions"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
@@ -158,7 +173,28 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			http.Error(w, `{"error":"title_required"}`, http.StatusBadRequest)
 			return
 		}
-		p, err := db.CreateBlogPost(r.Context(), houseID, user.Subject, title, strings.TrimSpace(body.Body))
+		tags, err := store.NormalizeBlogTags(body.Tags)
+		if err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+			return
+		}
+		mentions := store.UniqueNonEmpty(body.Mentions)
+		if len(mentions) > store.MaxBlogMentions() {
+			http.Error(w, `{"error":"too_many_mentions"}`, http.StatusBadRequest)
+			return
+		}
+		okMembers, err := db.AreHouseMembers(r.Context(), houseID, mentions)
+		if err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		if !okMembers {
+			http.Error(w, `{"error":"mention_not_member"}`, http.StatusBadRequest)
+			return
+		}
+		p, err := db.CreateBlogPost(
+			r.Context(), houseID, user.Subject, title, strings.TrimSpace(body.Body), tags, mentions,
+		)
 		if err != nil {
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
