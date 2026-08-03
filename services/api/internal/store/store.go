@@ -165,6 +165,56 @@ WHERE h.id = $1 AND m.user_sub = $2`, houseID, userSub,
 	return h, err
 }
 
+type HouseMember struct {
+	UserSub     string `json:"user_sub"`
+	DisplayName string `json:"display_name"`
+	Role        string `json:"role"`
+	HasAvatar   bool   `json:"has_avatar"`
+}
+
+func (s *Store) ListHouseMembers(ctx context.Context, houseID string) ([]HouseMember, error) {
+	rows, err := s.pool.Query(ctx, `
+SELECT m.user_sub, m.role,
+  COALESCE(p.display_name, ''),
+  COALESCE(p.avatar_key, '') <> ''
+FROM house_members m
+LEFT JOIN user_profiles p ON p.user_sub = m.user_sub
+WHERE m.house_id = $1
+ORDER BY m.role ASC, COALESCE(NULLIF(p.display_name, ''), m.user_sub) ASC`, houseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []HouseMember
+	for rows.Next() {
+		var m HouseMember
+		if err := rows.Scan(&m.UserSub, &m.Role, &m.DisplayName, &m.HasAvatar); err != nil {
+			return nil, err
+		}
+		if m.DisplayName == "" {
+			m.DisplayName = m.UserSub
+		}
+		out = append(out, m)
+	}
+	if out == nil {
+		out = []HouseMember{}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) AreHouseMembers(ctx context.Context, houseID string, subs []string) (bool, error) {
+	if len(subs) == 0 {
+		return true, nil
+	}
+	var n int
+	err := s.pool.QueryRow(ctx, `
+SELECT COUNT(*)::int FROM house_members
+WHERE house_id = $1 AND user_sub = ANY($2::text[])`, houseID, subs,
+	).Scan(&n)
+	return n == len(subs), err
+}
+
 func formatDate(t time.Time) string {
 	return t.Format("2006-01-02")
 }

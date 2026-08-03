@@ -4,6 +4,7 @@ import * as AuthSession from 'expo-auth-session';
 import { Redirect } from 'expo-router';
 import { ActivityIndicator, Button, Text } from 'react-native-paper';
 
+import { LighthouseMark } from '@/components/LighthouseMark';
 import {
   authClientId,
   discovery,
@@ -12,6 +13,7 @@ import {
   redirectUri,
 } from '@/lib/auth';
 import { useSession } from '@/providers/SessionProvider';
+import { Lighthouse } from '@/theme/lighthouse';
 import { useAppTheme } from '@/theme/paper';
 
 export default function LoginScreen() {
@@ -101,6 +103,9 @@ export default function LoginScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <View style={styles.markWrap}>
+        <LighthouseMark width={168} height={220} />
+      </View>
       <Text
         variant="displaySmall"
         style={{ color: theme.colors.primary, fontWeight: '800', letterSpacing: -1 }}
@@ -108,14 +113,19 @@ export default function LoginScreen() {
         Portclos
       </Text>
       <Text
-        variant="headlineSmall"
-        style={{ color: theme.colors.onBackground, fontWeight: '700', marginTop: 8 }}
+        variant="titleMedium"
+        style={{ color: Lighthouse.beaconDeep, fontWeight: '600', marginTop: 4 }}
       >
-        Connexion
+        la maison, en partage
       </Text>
       <Text
         variant="bodyLarge"
-        style={{ color: theme.colors.onSurfaceVariant, marginTop: 10, marginBottom: 28, lineHeight: 24 }}
+        style={{
+          color: theme.colors.onSurfaceVariant,
+          marginTop: 14,
+          marginBottom: 28,
+          lineHeight: 24,
+        }}
       >
         Accède à ta maison partagée.
       </Text>
@@ -127,6 +137,7 @@ export default function LoginScreen() {
         loading={busy}
         contentStyle={{ minHeight: 52 }}
         style={{ borderRadius: 16 }}
+        buttonColor={theme.colors.primary}
       >
         Se connecter
       </Button>
@@ -152,6 +163,10 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 28,
     justifyContent: 'center',
+  },
+  markWrap: {
+    alignItems: 'center',
+    marginBottom: 8,
   },
   center: {
     flex: 1,

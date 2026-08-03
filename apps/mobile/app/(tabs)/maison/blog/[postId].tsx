@@ -12,6 +12,7 @@ import {
 } from 'react-native-paper';
 
 import { AuthedImage } from '@/components/AuthedImage';
+import { PostMetaChips } from '@/components/blog/PostMetaChips';
 import {
   useAddBlogComment,
   useBlogPost,
@@ -194,10 +195,12 @@ export default function BlogPostScreen() {
       </Text>
       <Text
         variant="bodyMedium"
-        style={{ color: theme.colors.onSurfaceVariant, marginTop: 6, marginBottom: 16 }}
+        style={{ color: theme.colors.onSurfaceVariant, marginTop: 6, marginBottom: 10 }}
       >
         {data.author_name || 'Membre'} · {formatWhen(data.created_at)}
       </Text>
+
+      <PostMetaChips tags={data.tags} mentions={data.mentions} />
 
       {data.body ? (
         <Text
