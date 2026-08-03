@@ -284,6 +284,85 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 			})
 		})
 
+		pr.Patch("/occupations/{id}", func(w http.ResponseWriter, r *http.Request) {
+			user, ok := auth.UserFromContext(r.Context())
+			if !ok {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+			id := chi.URLParam(r, "id")
+			var body struct {
+				StartDate string `json:"start_date"`
+				EndDate   string `json:"end_date"`
+				Note      string `json:"note"`
+				Guests    *[]struct {
+					FirstName string `json:"first_name"`
+					Relation  string `json:"relation"`
+					Room      string `json:"room"`
+					ShareWith string `json:"share_with"`
+				} `json:"guests"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+				return
+			}
+			start, end, err := parseDateRange(body.StartDate, body.EndDate)
+			if err != nil {
+				http.Error(w, `{"error":"invalid_range"}`, http.StatusBadRequest)
+				return
+			}
+			replaceGuests := body.Guests != nil
+			var guests []store.OccupationGuest
+			if replaceGuests {
+				guests = make([]store.OccupationGuest, 0, len(*body.Guests))
+				for _, g := range *body.Guests {
+					name := strings.TrimSpace(g.FirstName)
+					if name == "" {
+						http.Error(w, `{"error":"guest_name_required"}`, http.StatusBadRequest)
+						return
+					}
+					rel, err := store.NormalizeGuestRelation(strings.TrimSpace(g.Relation))
+					if err != nil {
+						http.Error(w, `{"error":"invalid_relation"}`, http.StatusBadRequest)
+						return
+					}
+					guests = append(guests, store.OccupationGuest{
+						FirstName: name,
+						Relation:  rel,
+						Room:      g.Room,
+						ShareWith: g.ShareWith,
+					})
+				}
+				if len(guests) > 30 {
+					http.Error(w, `{"error":"too_many_guests"}`, http.StatusBadRequest)
+					return
+				}
+			}
+			o, warning, err := db.UpdateOccupationWithGuests(
+				r.Context(), id, user.Subject, start, end, strings.TrimSpace(body.Note), guests, replaceGuests,
+			)
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+					return
+				}
+				switch err.Error() {
+				case "too_many_host_shares", "too_many_double_shares":
+					http.Error(w, `{"error":"too_many_host_shares"}`, http.StatusBadRequest)
+					return
+				case "invalid_guest_pair", "invalid_share_with", "invalid_room":
+					http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+					return
+				}
+				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"occupation":       o,
+				"capacity_warning": warning,
+			})
+		})
+
 		pr.Delete("/occupations/{id}", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())
 			if !ok {

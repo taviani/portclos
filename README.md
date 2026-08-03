@@ -52,6 +52,7 @@ go run ./cmd/server
 - `GET /houses/{id}/occupations` — `{ occupations, single_beds, double_beds, bed_capacity, day_loads }` (`from`/`to`)
 - `POST /houses/{id}/occupations` — `{ start_date, end_date, note?, guests? }` → `{ occupation, capacity_warning? }`
   - guests: `{ first_name, relation?, room?: alone|shared, share_with?: host|guest:<i> }` (lit double avec hôte ou autre invité ; soft warn si pics > chambres/places)
+- `PATCH /occupations/{id}` — update own occupation (`start_date`, `end_date`, `note` ; `guests` optional replace)
 - `DELETE /occupations/{id}` — delete own occupation
 - `GET /houses/{id}/members` — house roster (display names)
 - `GET|POST /houses/{id}/posts` · `GET|DELETE /posts/{id}` — house blog (`tags`, `mentions` on create)
