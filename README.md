@@ -2,6 +2,8 @@
 
 Shared house app: occupation calendar, open/close checklists, todos, posts & photos.
 
+Product decisions and roadmaps that must survive across Cursor chats live in [`docs/`](docs/README.md) (not in chat history).
+
 ## Layout
 
 ```
