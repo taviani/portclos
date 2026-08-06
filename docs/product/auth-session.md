@@ -6,18 +6,32 @@
 - Sur **Android** : empreinte / déverrouillage facial via **BiometricPrompt**.
 - Une seule API Expo pour les deux : `expo-local-authentication` (pas encore branché dans Portclos).
 
-## Refresh token (implémenté côté app)
+## Refresh token (implémenté côté app Portclos)
 
 1. Login demande le scope `offline_access` (`AUTH_SCOPES` dans `lib/auth.ts`).
 2. `access_token` + `refresh_token` dans SecureStore.
 3. Au boot / retour foreground / 401 API : refresh silencieux ; login navigateur seulement si refresh échoue.
 
-## Config issuer (obligatoire)
+## Companion: kde-auth (issuer)
 
-Sur le client OIDC `portclos` (public + PKCE) :
+Le service auth émet déjà des `refresh_token` et gère `grant_type=refresh_token`, mais **rejette** le scope `offline_access` → le login Portclos échoue tant que ce n’est pas mergé.
 
-- Autoriser le scope **`offline_access`** (ou équivalent « refresh tokens »)
-- TTL refresh long (ex. 30–90 jours) ; access court (ex. 15–60 min)
-- Rotation du refresh token recommandée
+- Issue tracker : https://github.com/taviani/kde-auth/issues/22  
+- Patch à appliquer : [`patches/0001-Accept-offline_access-scope-for-native-refresh-sessi.patch`](patches/0001-Accept-offline_access-scope-for-native-refresh-sessi.patch)
 
-Sans ça, l’app ne reçoit pas de `refresh_token` et retombe sur une reconnexion à l’expiration de l’access token.
+```bash
+cd /path/to/kde-auth
+git checkout -b cursor/feat-offline-access-bb1c
+git am /path/to/portclos/docs/product/patches/0001-Accept-offline_access-scope-for-native-refresh-sessi.patch
+git push -u origin HEAD
+gh pr create --base main --title "Accept offline_access scope for native refresh sessions"
+```
+
+(Le cloud agent Portclos n’a pas le droit de push sur `kde-auth`.)
+
+### Client OAuth `portclos` (admin auth)
+
+- `token_endpoint_auth_method=none` (public + PKCE)
+- Redirect : `portclos://auth/callback`
+- Mode invite_only si besoin
+- Après deploy auth + merge Portclos : **une** connexion TestFlight pour stocker le refresh
