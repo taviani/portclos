@@ -22,7 +22,9 @@ export {
 } from 'expo-router';
 
 export const unstable_settings = {
-  initialRouteName: '(tabs)',
+  // Always enter via index so cold start / state restore cannot skip to a
+  // stale path and land on the Expo "This screen doesn't exist" screen.
+  initialRouteName: 'index',
 };
 
 SplashScreen.preventAutoHideAsync();
@@ -76,6 +78,7 @@ function RootStack() {
         headerTitleStyle: { fontWeight: '700' },
       }}
     >
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false, title: '' }} />
       <Stack.Screen
@@ -86,6 +89,7 @@ function RootStack() {
         }}
       />
       <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="+not-found" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -98,11 +102,14 @@ function AuthGate({ children }: { children: ReactNode }) {
     return null;
   }
 
-  const onLogin = segments[0] === 'login';
+  const root = segments[0];
+  const onLogin = root === 'login';
+  // Root `/` is handled by app/index.tsx; do not fight that redirect here.
+  const onIndex = root === undefined || root === 'index';
 
   return (
     <>
-      {!token && !onLogin ? <Redirect href="/login" /> : null}
+      {!token && !onLogin && !onIndex ? <Redirect href="/login" /> : null}
       {token && onLogin ? <Redirect href="/(tabs)/maison" /> : null}
       {children}
     </>
