@@ -1,33 +1,31 @@
-import { Redirect } from 'expo-router';
+import { useEffect } from 'react';
 import { View } from 'react-native';
 import { ActivityIndicator } from 'react-native-paper';
 
+import { resetToAppEntry } from '@/lib/navigation';
 import { useSession } from '@/providers/SessionProvider';
 import { useAppTheme } from '@/theme/paper';
 
-/** Root `/` — required so cold start does not land on +not-found. */
+/** Root `/` — cold start entry; hard-reset into Maison or login. */
 export default function Index() {
   const theme = useAppTheme();
   const { token, ready } = useSession();
 
-  if (!ready) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: theme.colors.background,
-        }}
-      >
-        <ActivityIndicator animating color={theme.colors.primary} />
-      </View>
-    );
-  }
+  useEffect(() => {
+    if (!ready) return;
+    resetToAppEntry(!!token);
+  }, [ready, token]);
 
-  if (!token) {
-    return <Redirect href="/login" />;
-  }
-
-  return <Redirect href="/(tabs)/maison" />;
+  return (
+    <View
+      style={{
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.background,
+      }}
+    >
+      <ActivityIndicator animating color={theme.colors.primary} />
+    </View>
+  );
 }
