@@ -27,8 +27,6 @@ git push -u origin HEAD
 gh pr create --base main --title "Accept offline_access scope for native refresh sessions"
 ```
 
-(Le cloud agent sur Portclos n’a pas le droit de push sur `kde-auth` — appliquer le patch depuis un clone avec accès en écriture.)
-
 ### Client OAuth `portclos` (admin auth)
 
 - `token_endpoint_auth_method=none` (public + PKCE)
