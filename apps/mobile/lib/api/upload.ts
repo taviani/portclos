@@ -1,6 +1,11 @@
 import { File, UploadType } from 'expo-file-system';
 
-import { apiBaseUrl, authHeaders, notifyUnauthorized } from '@/lib/api/http';
+import {
+  apiBaseUrl,
+  authHeaders,
+  notifyUnauthorized,
+  tryRefreshAccessToken,
+} from '@/lib/api/http';
 
 /**
  * Multipart photo upload via expo-file-system File.upload.
@@ -13,14 +18,25 @@ export async function uploadPhotoMultipart<T>(
   uri: string,
   mimeType?: string | null,
 ): Promise<T> {
-  const file = new File(uri);
-  const result = await file.upload(`${apiBaseUrl()}${path}`, {
-    httpMethod: 'POST',
-    uploadType: UploadType.MULTIPART,
-    fieldName: 'photo',
-    mimeType: mimeType || 'image/jpeg',
-    headers: authHeaders(accessToken) as Record<string, string>,
-  });
+  const uploadOnce = async (token: string) => {
+    const file = new File(uri);
+    return file.upload(`${apiBaseUrl()}${path}`, {
+      httpMethod: 'POST',
+      uploadType: UploadType.MULTIPART,
+      fieldName: 'photo',
+      mimeType: mimeType || 'image/jpeg',
+      headers: authHeaders(token) as Record<string, string>,
+    });
+  };
+
+  let result = await uploadOnce(accessToken);
+  if (result.status === 401) {
+    const next = await tryRefreshAccessToken();
+    if (next) {
+      result = await uploadOnce(next);
+    }
+  }
+
   if (result.status < 200 || result.status >= 300) {
     if (result.status === 401) {
       notifyUnauthorized();

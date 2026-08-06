@@ -4,8 +4,17 @@ import * as WebBrowser from 'expo-web-browser';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const TOKEN_KEY = 'portclos.access_token';
+const ACCESS_KEY = 'portclos.access_token';
+const REFRESH_KEY = 'portclos.refresh_token';
 const HOUSE_KEY = 'portclos.current_house_id';
+
+/** Refresh a bit before real exp so API calls rarely see a dead JWT. */
+const EXPIRY_SKEW_MS = 60_000;
+
+export type TokenBundle = {
+  accessToken: string;
+  refreshToken: string | null;
+};
 
 export function authIssuer(): string {
   const raw = process.env.EXPO_PUBLIC_AUTH_ISSUER?.trim();
@@ -37,8 +46,15 @@ export function discovery(): AuthSession.DiscoveryDocument {
   };
 }
 
+/** Scopes for login — offline_access requests a refresh_token when the issuer allows it. */
+export const AUTH_SCOPES = ['openid', 'email', 'offline_access'] as const;
+
 export async function getAccessToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(TOKEN_KEY);
+  return SecureStore.getItemAsync(ACCESS_KEY);
+}
+
+export async function getRefreshToken(): Promise<string | null> {
+  return SecureStore.getItemAsync(REFRESH_KEY);
 }
 
 /** Local-dev sentinel used when AUTH_DISABLED is on. */
@@ -46,52 +62,72 @@ export function isLocalDevToken(token: string): boolean {
   return token === 'local-dev';
 }
 
-/**
- * Best-effort JWT exp check (no signature verify — API still validates).
- * Expired / unreadable tokens must not keep the user "logged in" forever.
- */
-export function isAccessTokenExpired(token: string): boolean {
-  if (isLocalDevToken(token)) {
-    return false;
-  }
+function decodeJwtPayload(token: string): { exp?: number } | null {
   const parts = token.split('.');
   if (parts.length < 2) {
-    return true;
+    return null;
   }
   try {
     const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
-    const json = globalThis.atob(b64 + pad);
-    const payload = JSON.parse(json) as { exp?: number };
-    if (typeof payload.exp !== 'number') {
-      return false;
-    }
-    // 30s clock skew
-    return payload.exp * 1000 <= Date.now() + 30_000;
+    return JSON.parse(globalThis.atob(b64 + pad)) as { exp?: number };
   } catch {
-    return true;
+    return null;
   }
 }
 
-/** Stored token if present and not expired; clears SecureStore when expired. */
-export async function getValidAccessToken(): Promise<string | null> {
-  const token = await getAccessToken();
-  if (!token) {
-    return null;
+/**
+ * True when the access token should be refreshed (expired or within skew).
+ * Local-dev sentinel never expires.
+ */
+export function isAccessTokenExpired(token: string, skewMs = EXPIRY_SKEW_MS): boolean {
+  if (isLocalDevToken(token)) {
+    return false;
   }
-  if (isAccessTokenExpired(token)) {
-    await setAccessToken(null);
-    return null;
+  const payload = decodeJwtPayload(token);
+  if (!payload) {
+    return true;
   }
-  return token;
+  if (typeof payload.exp !== 'number') {
+    return false;
+  }
+  return payload.exp * 1000 <= Date.now() + skewMs;
 }
 
 export async function setAccessToken(token: string | null): Promise<void> {
   if (!token) {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(ACCESS_KEY);
     return;
   }
-  await SecureStore.setItemAsync(TOKEN_KEY, token);
+  await SecureStore.setItemAsync(ACCESS_KEY, token);
+}
+
+export async function setRefreshToken(token: string | null): Promise<void> {
+  if (!token) {
+    await SecureStore.deleteItemAsync(REFRESH_KEY);
+    return;
+  }
+  await SecureStore.setItemAsync(REFRESH_KEY, token);
+}
+
+/** Persist or clear the full token bundle (access + optional refresh). */
+export async function persistTokenBundle(bundle: TokenBundle | null): Promise<void> {
+  if (!bundle) {
+    await setAccessToken(null);
+    await setRefreshToken(null);
+    return;
+  }
+  await setAccessToken(bundle.accessToken);
+  if (bundle.refreshToken) {
+    await setRefreshToken(bundle.refreshToken);
+  } else if (bundle.refreshToken === null) {
+    // Explicit null from a refresh response that omitted rotation: keep existing refresh.
+  }
+}
+
+export async function clearAllTokens(): Promise<void> {
+  await setAccessToken(null);
+  await setRefreshToken(null);
 }
 
 export async function getCurrentHouseId(): Promise<string | null> {
@@ -106,10 +142,34 @@ export async function setCurrentHouseId(id: string | null): Promise<void> {
   await SecureStore.setItemAsync(HOUSE_KEY, id);
 }
 
+type TokenEndpointJson = {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  error?: string;
+};
+
+async function tokenRequest(body: URLSearchParams): Promise<TokenBundle> {
+  const res = await fetch(discovery().tokenEndpoint!, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+  const json = (await res.json().catch(() => ({}))) as TokenEndpointJson;
+  if (!res.ok || !json.access_token) {
+    const detail = json.error || `token HTTP ${res.status}`;
+    throw new Error(detail);
+  }
+  return {
+    accessToken: json.access_token,
+    refreshToken: json.refresh_token ?? null,
+  };
+}
+
 export async function exchangeCodeForToken(params: {
   code: string;
   codeVerifier: string;
-}): Promise<string> {
+}): Promise<TokenBundle> {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code: params.code,
@@ -117,17 +177,69 @@ export async function exchangeCodeForToken(params: {
     client_id: authClientId(),
     code_verifier: params.codeVerifier,
   });
-  const res = await fetch(discovery().tokenEndpoint!, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
+  return tokenRequest(body);
+}
+
+export async function refreshWithRefreshToken(refreshToken: string): Promise<TokenBundle> {
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    client_id: authClientId(),
   });
-  if (!res.ok) {
-    throw new Error(`token HTTP ${res.status}`);
+  return tokenRequest(body);
+}
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+/**
+ * Return a usable access token: refresh silently when needed.
+ * Single-flight so parallel API calls share one refresh.
+ */
+export async function ensureFreshAccessToken(): Promise<string | null> {
+  const access = await getAccessToken();
+  if (access && !isAccessTokenExpired(access)) {
+    return access;
   }
-  const json = (await res.json()) as { access_token?: string };
-  if (!json.access_token) {
-    throw new Error('token missing access_token');
+
+  if (access && isLocalDevToken(access)) {
+    return access;
   }
-  return json.access_token;
+
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+
+  refreshInFlight = (async () => {
+    try {
+      const refresh = await getRefreshToken();
+      if (!refresh) {
+        if (access && isAccessTokenExpired(access)) {
+          await clearAllTokens();
+        }
+        return null;
+      }
+      const bundle = await refreshWithRefreshToken(refresh);
+      await setAccessToken(bundle.accessToken);
+      // Rotate refresh when the issuer sends a new one; otherwise keep the old.
+      if (bundle.refreshToken) {
+        await setRefreshToken(bundle.refreshToken);
+      }
+      return bundle.accessToken;
+    } catch {
+      await clearAllTokens();
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+/**
+ * Boot helper: valid access, or silently refreshed, or null → login.
+ * @deprecated Prefer ensureFreshAccessToken — kept name for call sites.
+ */
+export async function getValidAccessToken(): Promise<string | null> {
+  return ensureFreshAccessToken();
 }

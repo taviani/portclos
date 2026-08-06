@@ -6,6 +6,7 @@ import { ActivityIndicator, Button, Text } from 'react-native-paper';
 
 import { LighthouseMark } from '@/components/LighthouseMark';
 import {
+  AUTH_SCOPES,
   authClientId,
   discovery,
   exchangeCodeForToken,
@@ -18,7 +19,7 @@ import { useAppTheme } from '@/theme/paper';
 
 export default function LoginScreen() {
   const theme = useAppTheme();
-  const { token, ready, setSessionToken } = useSession();
+  const { token, ready, setSessionTokens, setSessionToken } = useSession();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [redirect, setRedirect] = useState('');
@@ -27,7 +28,7 @@ export default function LoginScreen() {
     {
       clientId: authClientId(),
       redirectUri: redirect || redirectUri(),
-      scopes: ['openid', 'email'],
+      scopes: [...AUTH_SCOPES],
       usePKCE: true,
       responseType: AuthSession.ResponseType.Code,
     },
@@ -51,18 +52,18 @@ export default function LoginScreen() {
       setBusy(true);
       setError(null);
       try {
-        const accessToken = await exchangeCodeForToken({
+        const bundle = await exchangeCodeForToken({
           code,
           codeVerifier: request.codeVerifier!,
         });
-        await setSessionToken(accessToken);
+        await setSessionTokens(bundle);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'login failed');
       } finally {
         setBusy(false);
       }
     })();
-  }, [response, request, setSessionToken]);
+  }, [response, request, setSessionTokens]);
 
   const onLogin = useCallback(async () => {
     setError(null);
