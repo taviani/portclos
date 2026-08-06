@@ -4,6 +4,19 @@ type Extra = {
   apiUrl?: string;
 };
 
+type UnauthorizedHandler = () => void;
+
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+/** SessionProvider registers this so 401 clears the dead access token. */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  unauthorizedHandler = handler;
+}
+
+export function notifyUnauthorized(): void {
+  unauthorizedHandler?.();
+}
+
 export function apiBaseUrl(): string {
   const fromEnv = process.env.EXPO_PUBLIC_API_URL?.trim();
   if (fromEnv) {
@@ -16,6 +29,9 @@ export function apiBaseUrl(): string {
 export async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${apiBaseUrl()}${path}`, init);
   if (!res.ok) {
+    if (res.status === 401) {
+      notifyUnauthorized();
+    }
     let detail = `HTTP ${res.status}`;
     try {
       const body = (await res.json()) as { error?: string };

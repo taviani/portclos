@@ -41,6 +41,51 @@ export async function getAccessToken(): Promise<string | null> {
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
+/** Local-dev sentinel used when AUTH_DISABLED is on. */
+export function isLocalDevToken(token: string): boolean {
+  return token === 'local-dev';
+}
+
+/**
+ * Best-effort JWT exp check (no signature verify — API still validates).
+ * Expired / unreadable tokens must not keep the user "logged in" forever.
+ */
+export function isAccessTokenExpired(token: string): boolean {
+  if (isLocalDevToken(token)) {
+    return false;
+  }
+  const parts = token.split('.');
+  if (parts.length < 2) {
+    return true;
+  }
+  try {
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+    const json = globalThis.atob(b64 + pad);
+    const payload = JSON.parse(json) as { exp?: number };
+    if (typeof payload.exp !== 'number') {
+      return false;
+    }
+    // 30s clock skew
+    return payload.exp * 1000 <= Date.now() + 30_000;
+  } catch {
+    return true;
+  }
+}
+
+/** Stored token if present and not expired; clears SecureStore when expired. */
+export async function getValidAccessToken(): Promise<string | null> {
+  const token = await getAccessToken();
+  if (!token) {
+    return null;
+  }
+  if (isAccessTokenExpired(token)) {
+    await setAccessToken(null);
+    return null;
+  }
+  return token;
+}
+
 export async function setAccessToken(token: string | null): Promise<void> {
   if (!token) {
     await SecureStore.deleteItemAsync(TOKEN_KEY);

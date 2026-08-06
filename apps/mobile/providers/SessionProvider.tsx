@@ -9,7 +9,12 @@ import {
 } from 'react';
 
 import { queryClient } from '@/lib/queryClient';
-import { getAccessToken, setAccessToken, setCurrentHouseId } from '@/lib/auth';
+import {
+  getValidAccessToken,
+  setAccessToken,
+  setCurrentHouseId,
+} from '@/lib/auth';
+import { setUnauthorizedHandler } from '@/lib/api/http';
 
 type SessionContextValue = {
   token: string | null;
@@ -24,16 +29,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        setToken(await getAccessToken());
-      } finally {
-        setReady(true);
-      }
-    })();
-  }, []);
-
   const setSessionToken = useCallback(async (next: string | null) => {
     await setAccessToken(next);
     setToken(next);
@@ -46,6 +41,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await setCurrentHouseId(null);
     await setSessionToken(null);
   }, [setSessionToken]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setToken(await getValidAccessToken());
+      } finally {
+        setReady(true);
+      }
+    })();
+  }, []);
+
+  // API 401 (expired/revoked JWT) → clear session so user is not stuck
+  // "logged in" with a dead token until they manually disconnect.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      void signOut();
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [signOut]);
 
   const value = useMemo(
     () => ({ token, ready, setSessionToken, signOut }),
