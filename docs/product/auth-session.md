@@ -21,13 +21,13 @@ Le service auth émet déjà des `refresh_token` et gère `grant_type=refresh_to
 
 ```bash
 cd /path/to/kde-auth
-git checkout -b cursor/feat-offline-access-bb1c
+git checkout -b feat/offline-access-scope
 git am /path/to/portclos/docs/product/patches/0001-Accept-offline_access-scope-for-native-refresh-sessi.patch
 git push -u origin HEAD
 gh pr create --base main --title "Accept offline_access scope for native refresh sessions"
 ```
 
-(Le cloud agent Portclos n’a pas le droit de push sur `kde-auth`.)
+(Le cloud agent sur Portclos n’a pas le droit de push sur `kde-auth` — appliquer le patch depuis un clone avec accès en écriture.)
 
 ### Client OAuth `portclos` (admin auth)
 
