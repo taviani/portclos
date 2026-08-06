@@ -1,0 +1,10 @@
+---
+description: Pull requests are always ready for review (never draft)
+alwaysApply: true
+---
+
+# PR status
+
+- Always open GitHub PRs as **ready for review** (`draft: false`).
+- Never create draft PRs unless the user explicitly asks for a draft.
+- If a PR was opened as draft by mistake, mark it ready immediately (`gh pr ready`).
