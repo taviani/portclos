@@ -1,0 +1,105 @@
+From c97a581ac31124297a82b90ac51d7e556c3320cf Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Thu, 6 Aug 2026 22:16:14 +0000
+Subject: [PATCH] Accept offline_access scope for native refresh sessions
+
+Portclos (and other PKCE clients) request openid email offline_access.
+ParseScope previously rejected offline_access, so authorize failed before
+a refresh_token could be stored. Advertise the scope in discovery docs.
+---
+ README.md                     | 6 +++++-
+ internal/domain/email_test.go | 6 ++++++
+ internal/domain/token.go      | 8 +++++---
+ internal/usecase/oauth.go     | 6 +++++-
+ 4 files changed, 21 insertions(+), 5 deletions(-)
+
+diff --git a/README.md b/README.md
+index 09f7252..1b77bc9 100644
+--- a/README.md
++++ b/README.md
+@@ -35,6 +35,8 @@ internal/adapter/     http, postgres, crypto, mail
+ 
+ Public (mobile) clients use `token_endpoint_auth_method=none` and **must** send PKCE (`code_challenge` / `code_verifier`). Confidential clients keep `client_secret_post` (PKCE optional).
+ 
++Supported scopes: `openid` (required), `email`, `offline_access` (native apps that want a refresh token — the token endpoint already returns `refresh_token` on code exchange and supports `grant_type=refresh_token`).
++
+ | GET | `/userinfo` | Profile from Bearer JWT |
+ | POST | `/account/password` | Change password (Bearer JWT; body: `current_password`, `new_password`, `new_password_confirm`) |
+ 
+@@ -54,9 +56,11 @@ On localhost, JWT keys and OAuth client defaults are generated/seeded automatica
+ # 1. Register at http://localhost:3001/register
+ # 2. Copy verify URL from server logs, open in browser
+ # 3. Sign in, then open:
+-http://localhost:3001/authorize?client_id=dept-app&redirect_uri=http://localhost:4322/auth/callback&response_type=code&scope=openid%20email&state=dev
++http://localhost:3001/authorize?client_id=dept-app&redirect_uri=http://localhost:4322/auth/callback&response_type=code&scope=openid%20email%20offline_access&state=dev
+ ```
+ 
++Native apps (e.g. Portclos) should register a **public** client (`token_endpoint_auth_method=none`, PKCE) with a custom-scheme redirect such as `portclos://auth/callback`, then request `scope=openid email offline_access`.
++
+ ## Production
+ 
+ Set on the server `.env` only (never commit):
+diff --git a/internal/domain/email_test.go b/internal/domain/email_test.go
+index 1ee9186..4f82bc1 100644
+--- a/internal/domain/email_test.go
++++ b/internal/domain/email_test.go
+@@ -21,7 +21,13 @@ func TestParseScope(t *testing.T) {
+ 	if err := domain.ParseScope("openid email"); err != nil {
+ 		t.Fatal(err)
+ 	}
++	if err := domain.ParseScope("openid email offline_access"); err != nil {
++		t.Fatal(err)
++	}
+ 	if err := domain.ParseScope("email"); !errors.Is(err, domain.ErrInvalidScope) {
+ 		t.Fatalf("expected invalid scope, got %v", err)
+ 	}
++	if err := domain.ParseScope("openid profile"); !errors.Is(err, domain.ErrInvalidScope) {
++		t.Fatalf("expected invalid scope, got %v", err)
++	}
+ }
+diff --git a/internal/domain/token.go b/internal/domain/token.go
+index 22f2168..d835f41 100644
+--- a/internal/domain/token.go
++++ b/internal/domain/token.go
+@@ -3,8 +3,9 @@ package domain
+ import "time"
+ 
+ const (
+-	ScopeOpenID = "openid"
+-	ScopeEmail  = "email"
++	ScopeOpenID        = "openid"
++	ScopeEmail         = "email"
++	ScopeOfflineAccess = "offline_access"
+ )
+ 
+ type AuthorizationCode struct {
+@@ -46,7 +47,8 @@ func ParseScope(scope string) error {
+ 		switch part {
+ 		case ScopeOpenID:
+ 			hasOpenID = true
+-		case ScopeEmail:
++		case ScopeEmail, ScopeOfflineAccess:
++			// allowed
+ 		default:
+ 			return ErrInvalidScope
+ 		}
+diff --git a/internal/usecase/oauth.go b/internal/usecase/oauth.go
+index 67ca762..cf56d8d 100644
+--- a/internal/usecase/oauth.go
++++ b/internal/usecase/oauth.go
+@@ -368,7 +368,11 @@ func (uc *OIDCMetadata) Execute() map[string]any {
+ 		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
+ 		"subject_types_supported":               []string{"public"},
+ 		"id_token_signing_alg_values_supported": []string{"RS256"},
+-		"scopes_supported":                      []string{domain.ScopeOpenID, domain.ScopeEmail},
++		"scopes_supported": []string{
++			domain.ScopeOpenID,
++			domain.ScopeEmail,
++			domain.ScopeOfflineAccess,
++		},
+ 		"token_endpoint_auth_methods_supported": []string{
+ 			string(domain.TokenAuthClientSecretPost),
+ 			string(domain.TokenAuthNone),
+-- 
+2.43.0
+
