@@ -83,6 +83,8 @@ Client data: **TanStack Query** (`QueryClientProvider` + `queryKeys`) for server
 
 On each push to `main`, CI runs checks + smoke, then deploys via SSH/`rsync` + `docker-compose up -d --build`.
 
+Photo uploads land in the `portclos_uploads` Docker volume (`UPLOAD_DIR=/data/uploads`). The API entrypoint chowns that dir to `nobody` on start so multipart saves succeed.
+
 ### GitHub secrets (repo Settings → Secrets)
 
 | Secret | Purpose |
