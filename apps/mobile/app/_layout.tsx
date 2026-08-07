@@ -13,6 +13,8 @@ import 'react-native-reanimated';
 
 import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { useColorScheme } from '@/components/useColorScheme';
+import { useMe } from '@/hooks/useHouses';
+import { hasDisplayName } from '@/lib/displayName';
 import { AppProviders } from '@/providers/AppProviders';
 import { useSession } from '@/providers/SessionProvider';
 
@@ -64,7 +66,9 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthGate>
-        <RootStack />
+        <DisplayNameGate>
+          <RootStack />
+        </DisplayNameGate>
       </AuthGate>
     </ThemeProvider>
   );
@@ -80,6 +84,7 @@ function RootStack() {
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="display-name" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false, title: '' }} />
       <Stack.Screen
         name="compte"
@@ -111,6 +116,44 @@ function AuthGate({ children }: { children: ReactNode }) {
     <>
       {!token && !onLogin && !onIndex ? <Redirect href="/login" /> : null}
       {token && onLogin ? <Redirect href="/(tabs)/maison" /> : null}
+      {children}
+    </>
+  );
+}
+
+/** Signed-in users without a display name must pick one before the house UI. */
+function DisplayNameGate({ children }: { children: ReactNode }) {
+  const { token, ready } = useSession();
+  const segments = useSegments();
+  const me = useMe();
+
+  if (!ready || !token) {
+    return <>{children}</>;
+  }
+
+  const root = segments[0];
+  const onIndex = root === undefined || root === 'index';
+  const onDisplayName = root === 'display-name';
+  // Let login / cold-start index finish their own redirects first.
+  if (root === 'login' || onIndex) {
+    return <>{children}</>;
+  }
+
+  if (me.isLoading || (me.isFetching && !me.data)) {
+    return null;
+  }
+
+  // Profile fetch failed: do not soft-lock the whole app on this screen.
+  if (me.isError) {
+    return <>{children}</>;
+  }
+
+  const named = me.data ? hasDisplayName(me.data) : false;
+
+  return (
+    <>
+      {!named && !onDisplayName ? <Redirect href="/display-name" /> : null}
+      {named && onDisplayName ? <Redirect href="/(tabs)/maison" /> : null}
       {children}
     </>
   );

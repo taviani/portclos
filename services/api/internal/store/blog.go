@@ -173,10 +173,7 @@ ORDER BY created_at DESC LIMIT 100`, houseID)
 		return nil, err
 	}
 	for i := range posts {
-		posts[i].AuthorName = names[posts[i].AuthorSub]
-		if posts[i].AuthorName == "" {
-			posts[i].AuthorName = posts[i].AuthorSub
-		}
+		posts[i].AuthorName = displayLabel(names[posts[i].AuthorSub])
 		if ph, ok := photos[posts[i].ID]; ok {
 			posts[i].Photos = ph
 		}

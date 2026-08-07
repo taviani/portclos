@@ -115,6 +115,16 @@ WHERE user_sub = $1`, userSub)
 	return f, err
 }
 
+// displayLabel is the public author/member label when no display name is set.
+// Prefer this over exposing opaque user subs in API responses.
+func displayLabel(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "Membre"
+	}
+	return name
+}
+
 func (s *Store) DisplayNames(ctx context.Context, subs []string) (map[string]string, error) {
 	out := map[string]string{}
 	if len(subs) == 0 {

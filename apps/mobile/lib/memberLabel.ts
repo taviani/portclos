@@ -1,4 +1,8 @@
-/** Visible label for a house member / mention — never the opaque user id. */
+/**
+ * Visible label for a house member / mention — never the opaque user id.
+ * Prefer display_name (required product identity). Email is a temporary
+ * fallback only; social UI should not treat email as the primary label.
+ */
 export function memberLabel(person: {
   display_name?: string | null;
   email?: string | null;
