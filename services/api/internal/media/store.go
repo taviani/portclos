@@ -20,6 +20,13 @@ func New(root string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Fail fast at boot if the volume is not writable by the runtime user
+	// (historically caused silent HTTP 500 on every photo upload).
+	probe := filepath.Join(abs, ".write-probe")
+	if err := os.WriteFile(probe, []byte("ok"), 0o600); err != nil {
+		return nil, fmt.Errorf("upload dir not writable (%s): %w", abs, err)
+	}
+	_ = os.Remove(probe)
 	return &Store{root: abs}, nil
 }
 

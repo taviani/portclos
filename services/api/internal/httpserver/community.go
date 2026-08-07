@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -83,12 +84,14 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		photoID := uuid.NewString()
 		storageKey := "avatars/" + photoID + media.ExtForContentType(contentType)
 		if err := files.Save(storageKey, bytes.NewReader(buf)); err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			log.Printf("avatar save: %v", err)
+			http.Error(w, `{"error":"upload_storage_failed"}`, http.StatusInternalServerError)
 			return
 		}
 		old, p, err := db.SetAvatar(r.Context(), user.Subject, storageKey, contentType)
 		if err != nil {
 			_ = files.Remove(storageKey)
+			log.Printf("avatar db: %v", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
@@ -262,12 +265,14 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		photoID := uuid.NewString()
 		key := "blog/" + photoID + media.ExtForContentType(contentType)
 		if err := files.Save(key, bytes.NewReader(buf)); err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			log.Printf("blog photo save: %v", err)
+			http.Error(w, `{"error":"upload_storage_failed"}`, http.StatusInternalServerError)
 			return
 		}
 		ph, err := db.AddBlogPhoto(r.Context(), chi.URLParam(r, "postId"), user.Subject, key, contentType)
 		if err != nil {
 			_ = files.Remove(key)
+			log.Printf("blog photo db: %v", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
@@ -495,12 +500,14 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		photoID := uuid.NewString()
 		key := "help/" + photoID + media.ExtForContentType(contentType)
 		if err := files.Save(key, bytes.NewReader(buf)); err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			log.Printf("help photo save: %v", err)
+			http.Error(w, `{"error":"upload_storage_failed"}`, http.StatusInternalServerError)
 			return
 		}
 		ph, err := db.AddHelpPhoto(r.Context(), chi.URLParam(r, "articleId"), user.Subject, key, contentType)
 		if err != nil {
 			_ = files.Remove(key)
+			log.Printf("help photo db: %v", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}

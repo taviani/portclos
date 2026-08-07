@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -187,12 +188,14 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		photoID := uuid.NewString()
 		key := "checklist/" + photoID + media.ExtForContentType(contentType)
 		if err := files.Save(key, bytes.NewReader(buf)); err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			log.Printf("checklist photo save: %v", err)
+			http.Error(w, `{"error":"upload_storage_failed"}`, http.StatusInternalServerError)
 			return
 		}
 		p, err := db.AddChecklistItemPhoto(r.Context(), itemID, user.Subject, key, contentType)
 		if err != nil {
 			_ = files.Remove(key)
+			log.Printf("checklist photo db: %v", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
