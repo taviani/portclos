@@ -53,6 +53,10 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		name := strings.TrimSpace(body.DisplayName)
+		if name == "" {
+			http.Error(w, `{"error":"display_name_required"}`, http.StatusBadRequest)
+			return
+		}
 		if len(name) > 80 {
 			http.Error(w, `{"error":"display_name_too_long"}`, http.StatusBadRequest)
 			return

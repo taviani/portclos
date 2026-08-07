@@ -6,6 +6,7 @@ import {
   updateDisplayName,
   uploadAvatar,
 } from '@/lib/api';
+import { normalizeDisplayName } from '@/lib/displayName';
 import { queryKeys } from '@/lib/queryKeys';
 import { useSession } from '@/providers/SessionProvider';
 
@@ -15,10 +16,15 @@ export function useUpdateDisplayName() {
   return useMutation({
     mutationFn: async (displayName: string) => {
       if (!token) throw new Error('unauthorized');
-      return updateDisplayName(token, displayName);
+      const name = normalizeDisplayName(displayName);
+      if (!name) throw new Error('display_name_required');
+      return updateDisplayName(token, name);
     },
     onSuccess: async (profile) => {
       await qc.setQueryData(queryKeys.me, profile);
+      await qc.invalidateQueries({ queryKey: ['houseMembers'] });
+      await qc.invalidateQueries({ queryKey: ['blogPosts'] });
+      await qc.invalidateQueries({ queryKey: ['blogPost'] });
     },
   });
 }

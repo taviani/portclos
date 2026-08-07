@@ -40,6 +40,11 @@ import {
 } from '@/hooks/useProfile';
 import { avatarUrl } from '@/lib/api';
 import { setCurrentHouseId } from '@/lib/auth';
+import {
+  DISPLAY_NAME_MAX_LEN,
+  hasDisplayName,
+  normalizeDisplayName,
+} from '@/lib/displayName';
 import { queryKeys } from '@/lib/queryKeys';
 import { useSession } from '@/providers/SessionProvider';
 import { useAppTheme } from '@/theme/paper';
@@ -120,11 +125,27 @@ export default function CompteScreen() {
 
   const onSaveName = useCallback(async () => {
     setError(null);
+    const name = normalizeDisplayName(displayName);
+    if (!name) {
+      setError(
+        displayName.trim().length > DISPLAY_NAME_MAX_LEN
+          ? '80 caractères maximum'
+          : 'Le nom d’affichage est obligatoire',
+      );
+      return;
+    }
     try {
-      await updateName.mutateAsync(displayName.trim());
+      await updateName.mutateAsync(name);
       setShowNameEdit(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'enregistrement impossible');
+      const raw = e instanceof Error ? e.message : 'enregistrement impossible';
+      setError(
+        raw === 'display_name_required'
+          ? 'Le nom d’affichage est obligatoire'
+          : raw === 'display_name_too_long'
+            ? '80 caractères maximum'
+            : raw,
+      );
     }
   }, [displayName, updateName]);
 
@@ -324,6 +345,41 @@ export default function CompteScreen() {
         </Text>
       </View>
 
+      {me.data && !hasDisplayName(me.data) && !showNameEdit ? (
+        <View
+          style={{
+            marginBottom: 12,
+            padding: 14,
+            borderRadius: 12,
+            backgroundColor: theme.colors.secondaryContainer,
+          }}
+        >
+          <Text
+            variant="titleSmall"
+            style={{ color: theme.colors.onSecondaryContainer, fontWeight: '700' }}
+          >
+            Choisis un nom
+          </Text>
+          <Text
+            variant="bodyMedium"
+            style={{ color: theme.colors.onSecondaryContainer, marginTop: 4, lineHeight: 20 }}
+          >
+            Les autres te verront sous ce nom dans la maison — pas ton email.
+          </Text>
+          <Button
+            mode="contained-tonal"
+            compact
+            style={{ alignSelf: 'flex-start', marginTop: 10 }}
+            onPress={() => {
+              setDisplayName('');
+              setShowNameEdit(true);
+            }}
+          >
+            Choisir un nom d’affichage
+          </Button>
+        </View>
+      ) : null}
+
       {showNameEdit ? (
         <View>
           <TextInput
@@ -331,18 +387,22 @@ export default function CompteScreen() {
             label="Nom d’affichage"
             value={displayName}
             onChangeText={setDisplayName}
+            maxLength={DISPLAY_NAME_MAX_LEN}
+            autoCapitalize="words"
             style={{ backgroundColor: theme.colors.surface }}
           />
           <View style={[styles.ctaRow, { marginTop: 10 }]}>
-            <Button compact onPress={closeNameEdit}>
-              Annuler
-            </Button>
+            {hasDisplayName(me.data ?? {}) ? (
+              <Button compact onPress={closeNameEdit}>
+                Annuler
+              </Button>
+            ) : null}
             <Button
               compact
               mode="contained-tonal"
               onPress={() => void onSaveName()}
               loading={updateName.isPending}
-              disabled={updateName.isPending}
+              disabled={updateName.isPending || !normalizeDisplayName(displayName)}
             >
               Enregistrer
             </Button>
