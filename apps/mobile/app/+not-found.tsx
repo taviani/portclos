@@ -3,6 +3,8 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 import { ActivityIndicator } from 'react-native-paper';
 
+import { useMe } from '@/hooks/useHouses';
+import { hasDisplayName } from '@/lib/displayName';
 import { resetToAppEntry } from '@/lib/navigation';
 import { useSession } from '@/providers/SessionProvider';
 import { useAppTheme } from '@/theme/paper';
@@ -15,11 +17,24 @@ import { useAppTheme } from '@/theme/paper';
 export default function NotFoundScreen() {
   const theme = useAppTheme();
   const { token, ready } = useSession();
+  const me = useMe();
 
   useEffect(() => {
     if (!ready) return;
-    resetToAppEntry(!!token);
-  }, [ready, token]);
+    if (!token) {
+      resetToAppEntry({ loggedIn: false });
+      return;
+    }
+    if (me.isLoading || (me.isFetching && !me.data)) return;
+    if (me.isError) {
+      resetToAppEntry({ loggedIn: true, needsDisplayName: false });
+      return;
+    }
+    resetToAppEntry({
+      loggedIn: true,
+      needsDisplayName: !hasDisplayName(me.data ?? {}),
+    });
+  }, [ready, token, me.isLoading, me.isFetching, me.isError, me.data]);
 
   return (
     <>

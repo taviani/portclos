@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -14,6 +14,7 @@ import {
   DISPLAY_NAME_MAX_LEN,
   hasDisplayName,
   normalizeDisplayName,
+  suggestDisplayNameFromEmail,
 } from '@/lib/displayName';
 import { useSession } from '@/providers/SessionProvider';
 import { useAppTheme } from '@/theme/paper';
@@ -24,7 +25,17 @@ export default function DisplayNameScreen() {
   const me = useMe();
   const updateName = useUpdateDisplayName();
   const [value, setValue] = useState('');
+  const [prefilled, setPrefilled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (prefilled || !me.data) return;
+    const suggestion = suggestDisplayNameFromEmail(me.data.email);
+    if (suggestion) {
+      setValue(suggestion);
+    }
+    setPrefilled(true);
+  }, [me.data, prefilled]);
 
   const onSave = useCallback(async () => {
     const name = normalizeDisplayName(value);
@@ -108,17 +119,19 @@ export default function DisplayNameScreen() {
           lineHeight: 24,
         }}
       >
-        Un prénom ou un surnom suffit. C’est ce que verront les colocataires
-        dans la maison.
+        Un prénom ou un surnom suffit — pas ton email. Tu pourras le modifier
+        plus tard dans Compte.
       </Text>
       <TextInput
         mode="outlined"
-        label="Nom d’affichage"
+        label="Prénom ou surnom"
         value={value}
         onChangeText={setValue}
         autoFocus
+        selectTextOnFocus
         maxLength={DISPLAY_NAME_MAX_LEN}
         autoCapitalize="words"
+        autoCorrect={false}
         returnKeyType="done"
         onSubmitEditing={() => {
           if (canSave) void onSave();
@@ -134,7 +147,7 @@ export default function DisplayNameScreen() {
         style={{ borderRadius: 16, marginTop: 20 }}
         buttonColor={theme.colors.primary}
       >
-        Continuer
+        Entrer dans la maison
       </Button>
       {error ? (
         <Text style={{ color: theme.colors.error, marginTop: 16 }}>{error}</Text>

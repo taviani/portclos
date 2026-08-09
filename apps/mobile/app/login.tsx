@@ -5,6 +5,7 @@ import { Redirect } from 'expo-router';
 import { ActivityIndicator, Button, Text } from 'react-native-paper';
 
 import { LighthouseMark } from '@/components/LighthouseMark';
+import { useMe } from '@/hooks/useHouses';
 import {
   AUTH_SCOPES,
   authClientId,
@@ -13,6 +14,8 @@ import {
   isAuthConfigured,
   redirectUri,
 } from '@/lib/auth';
+import { hasDisplayName } from '@/lib/displayName';
+import { appEntryHref } from '@/lib/navigation';
 import { useSession } from '@/providers/SessionProvider';
 import { Lighthouse } from '@/theme/lighthouse';
 import { useAppTheme } from '@/theme/paper';
@@ -20,6 +23,7 @@ import { useAppTheme } from '@/theme/paper';
 export default function LoginScreen() {
   const theme = useAppTheme();
   const { token, ready, setSessionTokens, setSessionToken } = useSession();
+  const me = useMe();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [redirect, setRedirect] = useState('');
@@ -99,7 +103,18 @@ export default function LoginScreen() {
   }
 
   if (token) {
-    return <Redirect href="/(tabs)/maison" />;
+    if (me.isLoading || (me.isFetching && !me.data)) {
+      return (
+        <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
+          <ActivityIndicator animating color={theme.colors.primary} />
+        </View>
+      );
+    }
+    const needsDisplayName =
+      me.isSuccess && me.data ? !hasDisplayName(me.data) : false;
+    return (
+      <Redirect href={appEntryHref({ loggedIn: true, needsDisplayName })} />
+    );
   }
 
   return (

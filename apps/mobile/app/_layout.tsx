@@ -15,6 +15,7 @@ import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useMe } from '@/hooks/useHouses';
 import { hasDisplayName } from '@/lib/displayName';
+import { appEntryHref } from '@/lib/navigation';
 import { AppProviders } from '@/providers/AppProviders';
 import { useSession } from '@/providers/SessionProvider';
 
@@ -54,9 +55,15 @@ function SplashGate({
   fontsLoaded: boolean;
   children: ReactNode;
 }) {
-  const { ready: sessionReady } = useSession();
+  const { ready: sessionReady, token } = useSession();
+  const me = useMe();
+  // Hold splash until profile is known so cold start never paints Maison
+  // then immediately bounces to display-name.
+  const profileReady = !token || me.isSuccess || me.isError;
   return (
-    <AnimatedSplash ready={fontsLoaded && sessionReady}>{children}</AnimatedSplash>
+    <AnimatedSplash ready={fontsLoaded && sessionReady && profileReady}>
+      {children}
+    </AnimatedSplash>
   );
 }
 
@@ -102,6 +109,7 @@ function RootStack() {
 function AuthGate({ children }: { children: ReactNode }) {
   const { token, ready } = useSession();
   const segments = useSegments();
+  const me = useMe();
 
   if (!ready) {
     return null;
@@ -112,10 +120,21 @@ function AuthGate({ children }: { children: ReactNode }) {
   // Root `/` is handled by app/index.tsx; do not fight that redirect here.
   const onIndex = root === undefined || root === 'index';
 
+  let loginRedirect: ReactNode = null;
+  if (token && onLogin) {
+    const profilePending = me.isLoading || (me.isFetching && !me.data);
+    if (!profilePending) {
+      const needsDisplayName = me.isSuccess && me.data ? !hasDisplayName(me.data) : false;
+      loginRedirect = (
+        <Redirect href={appEntryHref({ loggedIn: true, needsDisplayName })} />
+      );
+    }
+  }
+
   return (
     <>
       {!token && !onLogin && !onIndex ? <Redirect href="/login" /> : null}
-      {token && onLogin ? <Redirect href="/(tabs)/maison" /> : null}
+      {loginRedirect}
       {children}
     </>
   );
