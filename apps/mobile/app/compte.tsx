@@ -16,6 +16,7 @@ import {
   Avatar,
   Button,
   Divider,
+  IconButton,
   List,
   Text,
   TextInput,
@@ -77,6 +78,7 @@ export default function CompteScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPasswordEdit, setShowPasswordEdit] = useState(false);
+  const [showHouseSwitcher, setShowHouseSwitcher] = useState(false);
   const [newHouse, setNewHouse] = useState('');
   const [showAddHouse, setShowAddHouse] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,7 +159,7 @@ export default function CompteScreen() {
 
   const pickAvatar = useCallback(() => {
     setError(null);
-    Alert.alert('Avatar', undefined, [
+    Alert.alert('Photo de profil', undefined, [
       {
         text: 'Photothèque',
         onPress: () => {
@@ -273,6 +275,7 @@ export default function CompteScreen() {
     async (id: string) => {
       try {
         await selectHouse.mutateAsync(id);
+        setShowHouseSwitcher(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'sélection impossible');
       }
@@ -280,12 +283,24 @@ export default function CompteScreen() {
     [selectHouse],
   );
 
-  const email = me.data?.email || me.data?.sub || null;
+  const email = me.data?.email || null;
   const queryError =
     (me.error instanceof Error && me.error.message) ||
     (houses.error instanceof Error && houses.error.message) ||
     null;
   const initial = (displayName || email || '?').trim().charAt(0).toUpperCase();
+  const named = hasDisplayName(me.data ?? {});
+  const otherHouses = (houses.data ?? []).filter((h) => h.id !== currentHouseId.data);
+  const bedSummary = (() => {
+    if (!activeHouse) return 'Non configurées';
+    const s = activeHouse.single_beds ?? 0;
+    const d = activeHouse.double_beds ?? 0;
+    if (s + d <= 0) return 'Non configurées';
+    const parts: string[] = [];
+    if (s > 0) parts.push(`${s} simple${s > 1 ? 's' : ''}`);
+    if (d > 0) parts.push(`${d} double${d > 1 ? 's' : ''}`);
+    return parts.join(' · ');
+  })();
 
   if (!ready) {
     return (
@@ -313,450 +328,439 @@ export default function CompteScreen() {
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       >
-      <Text
-        variant="headlineMedium"
-        style={{ color: theme.colors.onBackground, fontWeight: '800', letterSpacing: -0.4 }}
-      >
-        Compte
-      </Text>
-
-      <View style={styles.avatarBlock}>
-        <Pressable onPress={pickAvatar} accessibilityLabel="Changer l’avatar">
-          {me.data?.has_avatar && me.data.sub ? (
-            <AuthedImage
-              url={avatarUrl(me.data.sub)}
-              cacheKey={`avatar-${me.data.sub}-${me.data.updated_at ?? ''}`}
-              style={styles.avatarImg}
-            />
-          ) : (
-            <Avatar.Text
-              size={88}
-              label={initial}
-              style={{ backgroundColor: theme.colors.primaryContainer }}
-              labelStyle={{ color: theme.colors.onPrimaryContainer, fontWeight: '700' }}
-            />
-          )}
-        </Pressable>
-        <Button mode="text" compact onPress={pickAvatar} loading={uploadAvatar.isPending}>
-          Modifier la photo
-        </Button>
-        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-          {email ?? '…'}
-        </Text>
-      </View>
-
-      {me.data && !hasDisplayName(me.data) && !showNameEdit ? (
-        <View
-          style={{
-            marginBottom: 12,
-            padding: 14,
-            borderRadius: 12,
-            backgroundColor: theme.colors.secondaryContainer,
-          }}
-        >
+        {/* —— Identité —— */}
+        <View style={styles.identity}>
+          <Pressable
+            onPress={pickAvatar}
+            accessibilityLabel="Changer la photo de profil"
+            disabled={uploadAvatar.isPending || removeAvatar.isPending}
+          >
+            {me.data?.has_avatar && me.data.sub ? (
+              <AuthedImage
+                url={avatarUrl(me.data.sub)}
+                cacheKey={`avatar-${me.data.sub}-${me.data.updated_at ?? ''}`}
+                style={styles.avatarImg}
+              />
+            ) : (
+              <Avatar.Text
+                size={96}
+                label={initial}
+                style={{ backgroundColor: theme.colors.primaryContainer }}
+                labelStyle={{ color: theme.colors.onPrimaryContainer, fontWeight: '700' }}
+              />
+            )}
+          </Pressable>
           <Text
-            variant="titleSmall"
-            style={{ color: theme.colors.onSecondaryContainer, fontWeight: '700' }}
+            variant="labelMedium"
+            style={{ color: theme.colors.primary, marginTop: 10, fontWeight: '600' }}
+            onPress={pickAvatar}
           >
-            Choisis un nom
+            {uploadAvatar.isPending ? 'Envoi…' : 'Changer la photo'}
           </Text>
-          <Text
-            variant="bodyMedium"
-            style={{ color: theme.colors.onSecondaryContainer, marginTop: 4, lineHeight: 20 }}
-          >
-            Les autres te verront sous ce nom dans la maison — pas ton email.
-          </Text>
-          <Button
-            mode="contained-tonal"
-            compact
-            style={{ alignSelf: 'flex-start', marginTop: 10 }}
-            onPress={() => {
-              setDisplayName('');
-              setShowNameEdit(true);
-            }}
-          >
-            Choisir un nom d’affichage
-          </Button>
-        </View>
-      ) : null}
 
-      {showNameEdit ? (
-        <View>
-          <TextInput
-            mode="outlined"
-            label="Nom d’affichage"
-            value={displayName}
-            onChangeText={setDisplayName}
-            maxLength={DISPLAY_NAME_MAX_LEN}
-            autoCapitalize="words"
-            style={{ backgroundColor: theme.colors.surface }}
-          />
-          <View style={[styles.ctaRow, { marginTop: 10 }]}>
-            {hasDisplayName(me.data ?? {}) ? (
-              <Button compact onPress={closeNameEdit}>
-                Annuler
-              </Button>
-            ) : null}
-            <Button
-              compact
-              mode="contained-tonal"
-              onPress={() => void onSaveName()}
-              loading={updateName.isPending}
-              disabled={updateName.isPending || !normalizeDisplayName(displayName)}
-            >
-              Enregistrer
-            </Button>
-          </View>
-        </View>
-      ) : (
-        <Button
-          mode="outlined"
-          icon="account-edit-outline"
-          onPress={() => {
-            setDisplayName(me.data?.display_name || '');
-            setShowNameEdit(true);
-          }}
-          style={styles.cta}
-          contentStyle={styles.ctaContent}
-        >
-          {displayName.trim() ? 'Modifier le nom d’affichage' : 'Choisir un nom d’affichage'}
-        </Button>
-      )}
-      {!showNameEdit && displayName.trim() ? (
-        <Text
-          variant="bodyMedium"
-          style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}
-        >
-          {displayName.trim()}
-        </Text>
-      ) : null}
-
-      {showPasswordEdit ? (
-        <View>
-          <TextInput
-            mode="outlined"
-            label="Mot de passe actuel"
-            value={currentPassword}
-            onChangeText={setCurrentPassword}
-            secureTextEntry
-            style={{ backgroundColor: theme.colors.surface, marginBottom: 8 }}
-          />
-          <TextInput
-            mode="outlined"
-            label="Nouveau mot de passe"
-            value={newPassword}
-            onChangeText={setNewPassword}
-            secureTextEntry
-            style={{ backgroundColor: theme.colors.surface, marginBottom: 8 }}
-          />
-          <TextInput
-            mode="outlined"
-            label="Confirmer"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-            style={{ backgroundColor: theme.colors.surface }}
-          />
-          <Text
-            variant="bodySmall"
-            style={{ color: theme.colors.outline, marginTop: 6 }}
-          >
-            Au moins 12 caractères.
-          </Text>
-          <View style={[styles.ctaRow, { marginTop: 10 }]}>
-            <Button compact onPress={closePasswordEdit}>
-              Annuler
-            </Button>
-            <Button
-              compact
-              mode="contained-tonal"
-              onPress={() => void onChangePassword()}
-              loading={changePassword.isPending}
-              disabled={
-                changePassword.isPending ||
-                !currentPassword ||
-                !newPassword ||
-                !confirmPassword
-              }
-            >
-              Enregistrer
-            </Button>
-          </View>
-        </View>
-      ) : (
-        <Button
-          mode="outlined"
-          icon="lock-reset"
-          onPress={() => {
-            setPasswordOk(false);
-            setShowPasswordEdit(true);
-          }}
-          style={[styles.cta, { marginTop: 12 }]}
-          contentStyle={styles.ctaContent}
-        >
-          Changer le mot de passe
-        </Button>
-      )}
-      {passwordOk ? (
-        <Text style={{ color: theme.colors.primary, marginTop: 8 }}>
-          Mot de passe mis à jour.
-        </Text>
-      ) : null}
-
-      <Button
-        mode="outlined"
-        icon="logout"
-        onPress={() => void signOut()}
-        style={[styles.cta, { marginTop: 28, borderColor: theme.colors.error }]}
-        contentStyle={styles.ctaContent}
-        textColor={theme.colors.error}
-      >
-        Se déconnecter
-      </Button>
-
-      <Divider style={{ marginVertical: 28 }} />
-
-      <Text
-        variant="labelLarge"
-        style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}
-      >
-        MAISON ACTIVE
-      </Text>
-      {houses.isLoading ? (
-        <ActivityIndicator animating color={theme.colors.primary} />
-      ) : (houses.data?.length ?? 0) === 0 ? (
-        <Text style={{ color: theme.colors.outline }}>Aucune maison pour l’instant.</Text>
-      ) : (
-        houses.data!.map((h) => {
-          const active = h.id === currentHouseId.data;
-          return (
-            <List.Item
-              key={h.id}
-              title={h.name}
-              description={h.role}
-              onPress={() => void onSelectHouse(h.id)}
-              left={(props) => (
-                <List.Icon
-                  {...props}
-                  icon={active ? 'home' : 'home-outline'}
-                  color={active ? theme.colors.primary : theme.colors.onSurfaceVariant}
-                />
-              )}
-              right={
-                active
-                  ? (props) => <List.Icon {...props} icon="check" color={theme.colors.primary} />
-                  : undefined
-              }
-              style={{
-                backgroundColor: active
-                  ? theme.colors.primaryContainer
-                  : theme.colors.elevation.level1,
-                borderRadius: theme.roundness,
-                marginBottom: 8,
-              }}
-              titleStyle={{
-                fontWeight: '700',
-                color: active ? theme.colors.onPrimaryContainer : theme.colors.onSurface,
-              }}
-            />
-          );
-        })
-      )}
-
-      {activeHouse?.role === 'owner' ? (
-        <View
-          style={{ marginBottom: 12 }}
-          onLayout={(e) => {
-            addressBlockY.current = e.nativeEvent.layout.y;
-          }}
-        >
-          <Text
-            variant="bodyMedium"
-            style={{ color: theme.colors.onSurfaceVariant, marginBottom: 6 }}
-          >
-            Adresse
-            {activeHouse.address?.trim()
-              ? ` · ${activeHouse.address.trim()}`
-              : ' · non renseignée'}
-          </Text>
-          {showAddressEdit ? (
-            <View style={{ gap: 8, marginBottom: 8 }}>
+          {showNameEdit ? (
+            <View style={styles.nameEdit}>
               <TextInput
                 mode="outlined"
-                dense
-                label="Adresse"
-                multiline
-                value={addressDraft}
-                onChangeText={setAddressDraft}
-                onFocus={scrollAddressIntoView}
-                style={{ backgroundColor: theme.colors.surface, minHeight: 72 }}
+                label="Prénom ou surnom"
+                value={displayName}
+                onChangeText={setDisplayName}
+                maxLength={DISPLAY_NAME_MAX_LEN}
+                autoCapitalize="words"
+                autoFocus
+                style={{ backgroundColor: theme.colors.surface }}
               />
-              <View style={styles.addHouseActions}>
+              <View style={styles.ctaRow}>
+                {named ? (
+                  <Button compact onPress={closeNameEdit}>
+                    Annuler
+                  </Button>
+                ) : null}
                 <Button
                   compact
-                  mode="text"
-                  loading={updateHouseFields.isPending}
-                  onPress={() => {
-                    setError(null);
-                    void updateHouseFields
-                      .mutateAsync({ address: addressDraft.trim() })
-                      .then(() => {
-                        setShowAddressEdit(false);
-                        setAddressDraft('');
-                      })
-                      .catch((e) =>
-                        setError(e instanceof Error ? e.message : 'enregistrement impossible'),
-                      );
-                  }}
+                  mode="contained-tonal"
+                  onPress={() => void onSaveName()}
+                  loading={updateName.isPending}
+                  disabled={updateName.isPending || !normalizeDisplayName(displayName)}
                 >
-                  OK
-                </Button>
-                <Button compact onPress={() => setShowAddressEdit(false)}>
-                  Annuler
+                  Enregistrer
                 </Button>
               </View>
             </View>
           ) : (
-            <Button
-              compact
-              mode="outlined"
-              icon="map-marker-outline"
-              onPress={() => {
-                setAddressDraft(activeHouse.address ?? '');
-                setShowAddressEdit(true);
-              }}
-              style={{ alignSelf: 'flex-start', marginBottom: 12 }}
-            >
-              {activeHouse.address?.trim() ? 'Modifier' : 'Définir'}
-            </Button>
+            <View style={styles.nameRow}>
+              <Text
+                variant="headlineSmall"
+                style={{
+                  color: theme.colors.onBackground,
+                  fontWeight: '800',
+                  letterSpacing: -0.3,
+                  flexShrink: 1,
+                  textAlign: 'center',
+                }}
+              >
+                {displayName.trim() || 'Sans nom'}
+              </Text>
+              <IconButton
+                icon="pencil-outline"
+                size={20}
+                onPress={() => {
+                  setDisplayName(me.data?.display_name || '');
+                  setShowNameEdit(true);
+                }}
+                accessibilityLabel="Modifier le nom d’affichage"
+              />
+            </View>
           )}
 
-          <Text
-            variant="bodyMedium"
-            style={{ color: theme.colors.onSurfaceVariant, marginBottom: 8 }}
-          >
-            Chambres
-            {(() => {
-              const s = activeHouse.single_beds ?? 0;
-              const d = activeHouse.double_beds ?? 0;
-              if (s + d <= 0) return ' · non configurées';
-              const parts: string[] = [];
-              if (s > 0) parts.push(`${s} simple${s > 1 ? 's' : ''}`);
-              if (d > 0) parts.push(`${d} double${d > 1 ? 's' : ''}`);
-              return ` · ${parts.join(' · ')}`;
-            })()}
-          </Text>
-          {showCapacityEdit ? (
-            <View style={{ gap: 8, marginBottom: 4 }}>
-              <View style={styles.addHouseActions}>
-                <TextInput
-                  mode="outlined"
-                  dense
-                  label="Lits simples"
-                  keyboardType="number-pad"
-                  value={singleBedsDraft}
-                  onChangeText={setSingleBedsDraft}
-                  style={{ flex: 1, backgroundColor: theme.colors.surface }}
-                />
-                <TextInput
-                  mode="outlined"
-                  dense
-                  label="Lits doubles"
-                  keyboardType="number-pad"
-                  value={doubleBedsDraft}
-                  onChangeText={setDoubleBedsDraft}
-                  style={{ flex: 1, backgroundColor: theme.colors.surface }}
-                />
-              </View>
-              <View style={styles.addHouseActions}>
-                <Button
-                  compact
-                  mode="text"
-                  loading={updateHouseFields.isPending}
-                  onPress={() => {
-                    const s = parseInt(singleBedsDraft, 10);
-                    const d = parseInt(doubleBedsDraft, 10);
-                    if (Number.isNaN(s) || s < 0 || Number.isNaN(d) || d < 0) {
-                      setError('Nombre de lits invalide');
-                      return;
-                    }
-                    setError(null);
-                    void updateHouseFields
-                      .mutateAsync({ single_beds: s, double_beds: d })
-                      .then(() => {
-                        setShowCapacityEdit(false);
-                        setSingleBedsDraft('');
-                        setDoubleBedsDraft('');
-                      })
-                      .catch((e) =>
-                        setError(e instanceof Error ? e.message : 'enregistrement impossible'),
-                      );
-                  }}
-                >
-                  OK
-                </Button>
-                <Button compact onPress={() => setShowCapacityEdit(false)}>
-                  Annuler
-                </Button>
-              </View>
-            </View>
-          ) : (
-            <Button
-              compact
-              mode="outlined"
-              icon="bed"
-              onPress={() => {
-                setSingleBedsDraft(String(activeHouse.single_beds ?? 0));
-                setDoubleBedsDraft(String(activeHouse.double_beds ?? 0));
-                setShowCapacityEdit(true);
-              }}
-              style={{ alignSelf: 'flex-start' }}
+          {email ? (
+            <Text
+              variant="bodyMedium"
+              style={{ color: theme.colors.onSurfaceVariant, marginTop: 2 }}
             >
-              {(activeHouse.single_beds ?? 0) + (activeHouse.double_beds ?? 0) > 0
-                ? 'Modifier'
-                : 'Définir'}
-            </Button>
-          )}
+              {email}
+            </Text>
+          ) : null}
+
+          {!named && !showNameEdit ? (
+            <Text
+              variant="bodyMedium"
+              style={{
+                color: theme.colors.error,
+                marginTop: 12,
+                textAlign: 'center',
+                lineHeight: 20,
+              }}
+            >
+              Choisis un nom pour que les autres te reconnaissent dans la maison.
+            </Text>
+          ) : null}
         </View>
-      ) : null}
 
-      {!showAddHouse ? (
-        <Pressable onPress={() => setShowAddHouse(true)} style={styles.addHouseLink}>
-          <Text variant="labelSmall" style={{ color: theme.colors.outline }}>
-            Ajouter une maison…
-          </Text>
-        </Pressable>
-      ) : (
-        <View style={styles.addHouseBox}>
-          <TextInput
-            mode="outlined"
-            dense
-            label="Nom"
-            value={newHouse}
-            onChangeText={setNewHouse}
-            style={{ backgroundColor: theme.colors.surface }}
-          />
-          <View style={styles.addHouseActions}>
-            <Button compact onPress={() => setShowAddHouse(false)}>
-              Annuler
-            </Button>
-            <Button
-              compact
-              mode="text"
-              onPress={() => void onCreateHouse()}
-              loading={createHouse.isPending}
-              disabled={!newHouse.trim() || createHouse.isPending}
-            >
-              Créer
-            </Button>
+        <Divider style={styles.divider} />
+
+        {/* —— Sécurité —— */}
+        <Text
+          variant="labelLarge"
+          style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}
+        >
+          Sécurité
+        </Text>
+
+        {showPasswordEdit ? (
+          <View style={styles.inlineForm}>
+            <TextInput
+              mode="outlined"
+              label="Mot de passe actuel"
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+              secureTextEntry
+              style={styles.field}
+            />
+            <TextInput
+              mode="outlined"
+              label="Nouveau mot de passe"
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              style={styles.field}
+            />
+            <TextInput
+              mode="outlined"
+              label="Confirmer"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              style={styles.field}
+            />
+            <Text variant="bodySmall" style={{ color: theme.colors.outline }}>
+              Au moins 12 caractères.
+            </Text>
+            <View style={styles.ctaRow}>
+              <Button compact onPress={closePasswordEdit}>
+                Annuler
+              </Button>
+              <Button
+                compact
+                mode="contained-tonal"
+                onPress={() => void onChangePassword()}
+                loading={changePassword.isPending}
+                disabled={
+                  changePassword.isPending ||
+                  !currentPassword ||
+                  !newPassword ||
+                  !confirmPassword
+                }
+              >
+                Enregistrer
+              </Button>
+            </View>
           </View>
-        </View>
-      )}
+        ) : (
+          <List.Item
+            title="Changer le mot de passe"
+            left={(props) => <List.Icon {...props} icon="lock-outline" />}
+            right={(props) => <List.Icon {...props} icon="chevron-right" />}
+            onPress={() => {
+              setPasswordOk(false);
+              setShowPasswordEdit(true);
+            }}
+            style={styles.listRow}
+          />
+        )}
+        {passwordOk ? (
+          <Text style={{ color: theme.colors.primary, marginBottom: 8 }}>
+            Mot de passe mis à jour.
+          </Text>
+        ) : null}
 
-      {error || queryError ? (
-        <Text style={{ color: theme.colors.error, marginTop: 14 }}>{error || queryError}</Text>
-      ) : null}
-    </ScrollView>
+        <List.Item
+          title="Se déconnecter"
+          titleStyle={{ color: theme.colors.error }}
+          left={(props) => (
+            <List.Icon {...props} icon="logout" color={theme.colors.error} />
+          )}
+          onPress={() => void signOut()}
+          style={styles.listRow}
+        />
+
+        <Divider style={styles.divider} />
+
+        {/* —— Maison active uniquement —— */}
+        <Text
+          variant="labelLarge"
+          style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}
+        >
+          Cette maison
+        </Text>
+
+        {houses.isLoading ? (
+          <ActivityIndicator animating color={theme.colors.primary} />
+        ) : !activeHouse ? (
+          <Text style={{ color: theme.colors.outline, marginBottom: 8 }}>
+            Aucune maison pour l’instant.
+          </Text>
+        ) : (
+          <>
+            <Text
+              variant="titleMedium"
+              style={{
+                color: theme.colors.onBackground,
+                fontWeight: '700',
+                marginBottom: 4,
+              }}
+            >
+              {activeHouse.name}
+            </Text>
+            <Text
+              variant="bodySmall"
+              style={{ color: theme.colors.onSurfaceVariant, marginBottom: 12 }}
+            >
+              {activeHouse.role === 'owner' ? 'Tu es propriétaire' : 'Tu es membre'}
+            </Text>
+
+            {activeHouse.role === 'owner' ? (
+              <View
+                onLayout={(e) => {
+                  addressBlockY.current = e.nativeEvent.layout.y;
+                }}
+              >
+                {showAddressEdit ? (
+                  <View style={styles.inlineForm}>
+                    <TextInput
+                      mode="outlined"
+                      dense
+                      label="Adresse"
+                      multiline
+                      value={addressDraft}
+                      onChangeText={setAddressDraft}
+                      onFocus={scrollAddressIntoView}
+                      style={[styles.field, { minHeight: 72 }]}
+                    />
+                    <View style={styles.ctaRow}>
+                      <Button compact onPress={() => setShowAddressEdit(false)}>
+                        Annuler
+                      </Button>
+                      <Button
+                        compact
+                        mode="contained-tonal"
+                        loading={updateHouseFields.isPending}
+                        onPress={() => {
+                          setError(null);
+                          void updateHouseFields
+                            .mutateAsync({ address: addressDraft.trim() })
+                            .then(() => {
+                              setShowAddressEdit(false);
+                              setAddressDraft('');
+                            })
+                            .catch((e) =>
+                              setError(
+                                e instanceof Error ? e.message : 'enregistrement impossible',
+                              ),
+                            );
+                        }}
+                      >
+                        Enregistrer
+                      </Button>
+                    </View>
+                  </View>
+                ) : (
+                  <List.Item
+                    title="Adresse"
+                    description={
+                      activeHouse.address?.trim() || 'Non renseignée — appuie pour définir'
+                    }
+                    descriptionNumberOfLines={3}
+                    left={(props) => <List.Icon {...props} icon="map-marker-outline" />}
+                    right={(props) => <List.Icon {...props} icon="chevron-right" />}
+                    onPress={() => {
+                      setAddressDraft(activeHouse.address ?? '');
+                      setShowAddressEdit(true);
+                    }}
+                    style={styles.listRow}
+                  />
+                )}
+
+                {showCapacityEdit ? (
+                  <View style={styles.inlineForm}>
+                    <View style={styles.bedRow}>
+                      <TextInput
+                        mode="outlined"
+                        dense
+                        label="Lits simples"
+                        keyboardType="number-pad"
+                        value={singleBedsDraft}
+                        onChangeText={setSingleBedsDraft}
+                        style={[styles.field, { flex: 1 }]}
+                      />
+                      <TextInput
+                        mode="outlined"
+                        dense
+                        label="Lits doubles"
+                        keyboardType="number-pad"
+                        value={doubleBedsDraft}
+                        onChangeText={setDoubleBedsDraft}
+                        style={[styles.field, { flex: 1 }]}
+                      />
+                    </View>
+                    <View style={styles.ctaRow}>
+                      <Button compact onPress={() => setShowCapacityEdit(false)}>
+                        Annuler
+                      </Button>
+                      <Button
+                        compact
+                        mode="contained-tonal"
+                        loading={updateHouseFields.isPending}
+                        onPress={() => {
+                          const s = parseInt(singleBedsDraft, 10);
+                          const d = parseInt(doubleBedsDraft, 10);
+                          if (Number.isNaN(s) || s < 0 || Number.isNaN(d) || d < 0) {
+                            setError('Nombre de lits invalide');
+                            return;
+                          }
+                          setError(null);
+                          void updateHouseFields
+                            .mutateAsync({ single_beds: s, double_beds: d })
+                            .then(() => {
+                              setShowCapacityEdit(false);
+                              setSingleBedsDraft('');
+                              setDoubleBedsDraft('');
+                            })
+                            .catch((e) =>
+                              setError(
+                                e instanceof Error ? e.message : 'enregistrement impossible',
+                              ),
+                            );
+                        }}
+                      >
+                        Enregistrer
+                      </Button>
+                    </View>
+                  </View>
+                ) : (
+                  <List.Item
+                    title="Chambres"
+                    description={bedSummary}
+                    left={(props) => <List.Icon {...props} icon="bed-outline" />}
+                    right={(props) => <List.Icon {...props} icon="chevron-right" />}
+                    onPress={() => {
+                      setSingleBedsDraft(String(activeHouse.single_beds ?? 0));
+                      setDoubleBedsDraft(String(activeHouse.double_beds ?? 0));
+                      setShowCapacityEdit(true);
+                    }}
+                    style={styles.listRow}
+                  />
+                )}
+              </View>
+            ) : null}
+
+            {otherHouses.length > 0 ? (
+              <>
+                <Button
+                  mode="text"
+                  compact
+                  icon={showHouseSwitcher ? 'chevron-up' : 'swap-horizontal'}
+                  onPress={() => setShowHouseSwitcher((v) => !v)}
+                  style={{ alignSelf: 'flex-start', marginTop: 4 }}
+                >
+                  {showHouseSwitcher ? 'Masquer' : 'Changer de maison'}
+                </Button>
+                {showHouseSwitcher
+                  ? otherHouses.map((h) => (
+                      <List.Item
+                        key={h.id}
+                        title={h.name}
+                        description={h.role}
+                        left={(props) => <List.Icon {...props} icon="home-outline" />}
+                        onPress={() => void onSelectHouse(h.id)}
+                        style={styles.listRow}
+                      />
+                    ))
+                  : null}
+              </>
+            ) : null}
+          </>
+        )}
+
+        {!showAddHouse ? (
+          <Pressable onPress={() => setShowAddHouse(true)} style={styles.addHouseLink}>
+            <Text variant="bodySmall" style={{ color: theme.colors.outline }}>
+              Ajouter une maison…
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={styles.inlineForm}>
+            <TextInput
+              mode="outlined"
+              dense
+              label="Nom de la maison"
+              value={newHouse}
+              onChangeText={setNewHouse}
+              style={styles.field}
+            />
+            <View style={styles.ctaRow}>
+              <Button compact onPress={() => setShowAddHouse(false)}>
+                Annuler
+              </Button>
+              <Button
+                compact
+                mode="contained-tonal"
+                onPress={() => void onCreateHouse()}
+                loading={createHouse.isPending}
+                disabled={!newHouse.trim() || createHouse.isPending}
+              >
+                Créer
+              </Button>
+            </View>
+          </View>
+        )}
+
+        {error || queryError ? (
+          <Text style={{ color: theme.colors.error, marginTop: 16 }}>
+            {error || queryError}
+          </Text>
+        ) : null}
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -764,7 +768,7 @@ export default function CompteScreen() {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 8,
     paddingBottom: 120,
   },
   center: {
@@ -772,28 +776,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarBlock: {
+  identity: {
     alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 8,
-    gap: 4,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
   avatarImg: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    maxWidth: '100%',
+    paddingHorizontal: 8,
+  },
+  nameEdit: {
+    alignSelf: 'stretch',
+    marginTop: 16,
+    gap: 8,
   },
   sectionLabel: {
+    marginBottom: 4,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  divider: {
+    marginVertical: 22,
+  },
+  listRow: {
+    marginHorizontal: -8,
+    borderRadius: 10,
+  },
+  inlineForm: {
+    gap: 8,
     marginBottom: 8,
-    letterSpacing: 0.6,
   },
-  cta: {
-    alignSelf: 'stretch',
-    borderRadius: 12,
-  },
-  ctaContent: {
-    justifyContent: 'flex-start',
-    minHeight: 48,
+  field: {
+    backgroundColor: 'transparent',
   },
   ctaRow: {
     flexDirection: 'row',
@@ -801,18 +824,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  addHouseLink: {
-    marginTop: 16,
-    alignSelf: 'flex-end',
-    paddingVertical: 4,
-  },
-  addHouseBox: {
-    marginTop: 12,
-    opacity: 0.9,
-  },
-  addHouseActions: {
+  bedRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 4,
+    gap: 8,
+  },
+  addHouseLink: {
+    marginTop: 20,
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
   },
 });
