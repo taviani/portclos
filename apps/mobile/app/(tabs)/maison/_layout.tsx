@@ -18,6 +18,7 @@ export default function MaisonLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Maison' }} />
+      <Stack.Screen name="infos" options={{ title: 'Infos maison' }} />
       <Stack.Screen name="fermeture" options={{ headerShown: false }} />
     </Stack>
   );
