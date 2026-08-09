@@ -43,3 +43,6 @@ coverage/
 
 # TypeScript
 *.tsbuildinfo
+
+# Cursor agent rules — keep local only, never commit
+.cursor/
