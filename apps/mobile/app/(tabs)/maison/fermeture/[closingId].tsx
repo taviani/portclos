@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
@@ -14,6 +14,7 @@ import {
 
 import { AuthedImage } from '@/components/AuthedImage';
 import {
+  useCancelClosing,
   useClosing,
   useCompleteClosing,
   useUpdateClosingItem,
@@ -28,6 +29,7 @@ export default function ClosingRunScreen() {
   const closing = useClosing(closingId);
   const updateItem = useUpdateClosingItem(closingId);
   const complete = useCompleteClosing(closingId, closing.data?.house_id);
+  const cancel = useCancelClosing(closingId, closing.data?.house_id);
   const [error, setError] = useState<string | null>(null);
 
   const progress = useMemo(() => {
@@ -57,6 +59,7 @@ export default function ClosingRunScreen() {
 
   const detail = closing.data;
   const open = detail.status === 'open';
+  const cancelled = detail.status === 'cancelled';
   const canFinish = open && progress.remaining === 0;
 
   const setStatus = (item: ClosingItem, status: ClosingItem['status']) => {
@@ -69,6 +72,35 @@ export default function ClosingRunScreen() {
         setError(msg);
       }
     });
+  };
+
+  const confirmCancel = () => {
+    Alert.alert(
+      'Annuler cette fermeture ?',
+      'La checklist en cours sera abandonnée. Tu pourras en recommencer une après.',
+      [
+        { text: 'Non', style: 'cancel' },
+        {
+          text: 'Oui, annuler',
+          style: 'destructive',
+          onPress: () => {
+            setError(null);
+            void cancel
+              .mutateAsync()
+              .then(() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/(tabs)/maison/fermeture');
+                }
+              })
+              .catch((e) => {
+                setError(e instanceof Error ? e.message : 'annulation impossible');
+              });
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -89,7 +121,9 @@ export default function ClosingRunScreen() {
                 ? progress.remaining === 0
                   ? 'Tout est fait'
                   : `${progress.remaining} requise${progress.remaining > 1 ? 's' : ''} restante${progress.remaining > 1 ? 's' : ''}`
-                : 'Fermeture terminée'}
+                : cancelled
+                  ? 'Fermeture annulée'
+                  : 'Fermeture terminée'}
             </Text>
             <Chip compact style={{ backgroundColor: theme.colors.secondaryContainer }}>
               {progress.doneReq}/{progress.required}
@@ -216,7 +250,9 @@ export default function ClosingRunScreen() {
             variant="bodyLarge"
             style={{ textAlign: 'center', marginTop: 20, color: theme.colors.onSurfaceVariant }}
           >
-            Cette fermeture est enregistrée.
+            {cancelled
+              ? 'Cette fermeture a été annulée.'
+              : 'Cette fermeture est enregistrée.'}
           </Text>
         ) : null}
         {error ? (
@@ -241,7 +277,7 @@ export default function ClosingRunScreen() {
           <Button
             mode="contained"
             icon="check-bold"
-            disabled={!canFinish}
+            disabled={!canFinish || cancel.isPending}
             loading={complete.isPending}
             onPress={() => {
               setError(null);
@@ -260,6 +296,17 @@ export default function ClosingRunScreen() {
             {canFinish
               ? 'Terminer la fermeture'
               : `Encore ${progress.remaining} requise${progress.remaining > 1 ? 's' : ''}`}
+          </Button>
+          <Button
+            mode="text"
+            icon="close-circle-outline"
+            disabled={complete.isPending || cancel.isPending}
+            loading={cancel.isPending}
+            onPress={confirmCancel}
+            textColor={theme.colors.error}
+            style={{ marginTop: 4 }}
+          >
+            Annuler la fermeture
           </Button>
         </Surface>
       ) : null}

@@ -280,6 +280,18 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		writeJSON(w, http.StatusOK, detail)
 	})
 
+	pr.Post("/closings/{closingId}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireClosingMember(w, r, db); !ok {
+			return
+		}
+		detail, err := db.CancelClosing(r.Context(), chi.URLParam(r, "closingId"))
+		if err != nil {
+			writeClosingItemErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, detail)
+	})
+
 	pr.Get("/closing-photos/{photoId}", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok {

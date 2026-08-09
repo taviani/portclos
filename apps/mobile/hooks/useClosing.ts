@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  cancelClosing,
   completeClosing,
   createChecklistItem,
   deleteChecklistItem,
@@ -91,6 +92,23 @@ export function useCompleteClosing(closingId: string | undefined, houseId: strin
     mutationFn: async () => {
       if (!token || !closingId) throw new Error('unauthorized');
       return completeClosing(token, closingId);
+    },
+    onSuccess: async (detail) => {
+      await qc.setQueryData(queryKeys.closing(detail.id), detail);
+      if (houseId) {
+        await qc.invalidateQueries({ queryKey: queryKeys.closings(houseId) });
+      }
+    },
+  });
+}
+
+export function useCancelClosing(closingId: string | undefined, houseId: string | undefined) {
+  const { token } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!token || !closingId) throw new Error('unauthorized');
+      return cancelClosing(token, closingId);
     },
     onSuccess: async (detail) => {
       await qc.setQueryData(queryKeys.closing(detail.id), detail);

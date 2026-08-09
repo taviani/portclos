@@ -120,10 +120,15 @@ CREATE TABLE IF NOT EXISTS closings (
   id UUID PRIMARY KEY,
   house_id UUID NOT NULL REFERENCES houses (id) ON DELETE CASCADE,
   started_by TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('open', 'completed')),
+  status TEXT NOT NULL CHECK (status IN ('open', 'completed', 'cancelled')),
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   completed_at TIMESTAMPTZ
 );
+-- Existing DBs created with open|completed only.
+ALTER TABLE closings DROP CONSTRAINT IF EXISTS closings_status_check;
+ALTER TABLE closings
+  ADD CONSTRAINT closings_status_check
+  CHECK (status IN ('open', 'completed', 'cancelled'));
 CREATE INDEX IF NOT EXISTS closings_house_started_idx
   ON closings (house_id, started_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS closings_one_open_per_house
@@ -522,6 +527,28 @@ SET status = 'completed', completed_at = now()
 WHERE id = $1 AND status = 'open'`, closingID)
 	if err != nil {
 		return ClosingDetail{}, err
+	}
+	return s.GetClosingDetail(ctx, closingID)
+}
+
+// CancelClosing abandons an in-progress closing so a new one can start.
+func (s *Store) CancelClosing(ctx context.Context, closingID string) (ClosingDetail, error) {
+	detail, err := s.GetClosingDetail(ctx, closingID)
+	if err != nil {
+		return ClosingDetail{}, err
+	}
+	if detail.Status != "open" {
+		return ClosingDetail{}, ErrClosingNotOpen
+	}
+	tag, err := s.pool.Exec(ctx, `
+UPDATE closings
+SET status = 'cancelled'
+WHERE id = $1 AND status = 'open'`, closingID)
+	if err != nil {
+		return ClosingDetail{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return ClosingDetail{}, ErrClosingNotOpen
 	}
 	return s.GetClosingDetail(ctx, closingID)
 }
