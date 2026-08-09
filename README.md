@@ -43,6 +43,7 @@ go run ./cmd/server
 ```
 
 - `GET /health` — public
+- `POST /client-events` — mobile error/usage signals (`kind`: error|screen|action); requires Bearer JWT
 - `GET|PATCH /me` — profile (`display_name`); requires Bearer JWT (unless `AUTH_DISABLED=true`)
 - `POST|DELETE /me/avatar` · `GET /avatars/{userSub}` — avatar image
 - `GET|POST /houses` — multi-house membership (JWT `sub`)
@@ -78,6 +79,8 @@ npm start
 Auth: Expo AuthSession + PKCE against the shared issuer. Current house id is stored on-device (SecureStore).
 
 Client data: **TanStack Query** (`QueryClientProvider` + `queryKeys`) for server state; session token via `SessionProvider`. Creating / selecting a house invalidates `houses` / `currentHouseId` so the Accueil tab updates without remounting. Future calendar keys: `occupations(houseId, month)`.
+
+Observability (self-hosted): JSON `slog` access logs + Postgres `usage_events` / `client_events`. See [docs/product/logging.md](docs/product/logging.md).
 
 ## Deploy — API (GitHub Actions → VPS)
 

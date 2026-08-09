@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { queryClient } from '@/lib/queryClient';
 import { SearchOverlayProvider } from '@/providers/SearchOverlayProvider';
 import { SessionProvider } from '@/providers/SessionProvider';
+import { TelemetryProvider } from '@/providers/TelemetryProvider';
 import { PortclosPaperProvider } from '@/theme/paper';
 
 export function AppProviders({ children }: { children: ReactNode }) {
@@ -11,7 +12,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <PortclosPaperProvider>
         <SessionProvider>
-          <SearchOverlayProvider>{children}</SearchOverlayProvider>
+          <TelemetryProvider>
+            <SearchOverlayProvider>{children}</SearchOverlayProvider>
+          </TelemetryProvider>
         </SessionProvider>
       </PortclosPaperProvider>
     </QueryClientProvider>

@@ -6,9 +6,16 @@ type Extra = {
 
 type UnauthorizedHandler = () => void;
 type TokenRefreshHandler = () => Promise<string | null>;
+type ApiErrorReporter = (opts: {
+  path: string;
+  status?: number;
+  code: string;
+  requestId?: string;
+}) => void;
 
 let unauthorizedHandler: UnauthorizedHandler | null = null;
 let tokenRefreshHandler: TokenRefreshHandler | null = null;
+let apiErrorReporter: ApiErrorReporter | null = null;
 
 /** SessionProvider: clear session after refresh failed. */
 export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
@@ -18,6 +25,11 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
 /** SessionProvider: attempt silent refresh; return new access token or null. */
 export function setTokenRefreshHandler(handler: TokenRefreshHandler | null): void {
   tokenRefreshHandler = handler;
+}
+
+/** Telemetry: optional reporter for failed API calls (avoids import cycles). */
+export function setApiErrorReporter(handler: ApiErrorReporter | null): void {
+  apiErrorReporter = handler;
 }
 
 export function notifyUnauthorized(): void {
@@ -62,12 +74,20 @@ export async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
       notifyUnauthorized();
     }
     let detail = `HTTP ${res.status}`;
+    let requestId: string | undefined;
     try {
-      const body = (await res.json()) as { error?: string };
+      const body = (await res.json()) as { error?: string; request_id?: string };
       if (body.error) detail = body.error;
+      if (body.request_id) requestId = body.request_id;
     } catch {
       /* ignore */
     }
+    apiErrorReporter?.({
+      path,
+      status: res.status,
+      code: detail,
+      requestId,
+    });
     throw new Error(detail);
   }
   return res.json() as Promise<T>;

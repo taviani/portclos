@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/taviani/portclos/services/api/internal/applog"
 	"github.com/taviani/portclos/services/api/internal/auth"
 	"github.com/taviani/portclos/services/api/internal/config"
 	"github.com/taviani/portclos/services/api/internal/httpserver"
@@ -20,27 +21,33 @@ import (
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		// Logger not ready yet — stderr is fine for fatal boot errors.
+		fmt.Fprintf(os.Stderr, "config: %v\n", err)
+		os.Exit(1)
 	}
+	applog.Setup(cfg.LogLevel)
 
 	ctx := context.Background()
 	validator, err := auth.NewValidator(ctx, cfg.AuthIssuer, cfg.AuthDisabled)
 	if err != nil {
-		log.Fatalf("auth: %v", err)
+		slog.Error("auth_init_failed", "error", err)
+		os.Exit(1)
 	}
 	if cfg.AuthDisabled {
-		log.Printf("warning: AUTH_DISABLED=true — JWT checks are off")
+		slog.Warn("auth_disabled", "msg", "JWT checks are off")
 	}
 
 	db, err := store.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("store: %v", err)
+		slog.Error("store_init_failed", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
 	files, err := media.New(cfg.UploadDir)
 	if err != nil {
-		log.Fatalf("media: %v", err)
+		slog.Error("media_init_failed", "error", err)
+		os.Exit(1)
 	}
 
 	srv := &http.Server{
@@ -51,9 +58,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("portclos-api listening on %s", srv.Addr)
+		slog.Info("listening", "addr", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server: %v", err)
+			slog.Error("server_failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -64,6 +72,8 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("shutdown: %v", err)
+		slog.Error("shutdown_failed", "error", err)
+		os.Exit(1)
 	}
+	slog.Info("shutdown_complete")
 }
