@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -31,7 +31,6 @@ import {
   useHouses,
   useMe,
   useSelectHouse,
-  useUpdateHouse,
 } from '@/hooks/useHouses';
 import {
   useChangePassword,
@@ -61,7 +60,6 @@ export default function CompteScreen() {
   const createHouse = useCreateHouse();
   const selectHouse = useSelectHouse();
   const { house: activeHouse } = useCurrentHouse();
-  const updateHouseFields = useUpdateHouse(activeHouse?.id);
   const updateName = useUpdateDisplayName();
   const uploadAvatar = useUploadAvatar();
   const removeAvatar = useDeleteAvatar();
@@ -69,11 +67,6 @@ export default function CompteScreen() {
 
   const [displayName, setDisplayName] = useState('');
   const [showNameEdit, setShowNameEdit] = useState(false);
-  const [singleBedsDraft, setSingleBedsDraft] = useState('');
-  const [doubleBedsDraft, setDoubleBedsDraft] = useState('');
-  const [showCapacityEdit, setShowCapacityEdit] = useState(false);
-  const [addressDraft, setAddressDraft] = useState('');
-  const [showAddressEdit, setShowAddressEdit] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -83,30 +76,12 @@ export default function CompteScreen() {
   const [showAddHouse, setShowAddHouse] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passwordOk, setPasswordOk] = useState(false);
-  const scrollRef = useRef(null as ScrollView | null);
-  const addressBlockY = useRef(0);
-
-  const scrollAddressIntoView = useCallback(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({
-        y: Math.max(0, addressBlockY.current - 24),
-        animated: true,
-      });
-    });
-  }, []);
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => <MaisonHeaderActions showAccount={false} />,
     });
   }, [navigation]);
-
-  useEffect(() => {
-    if (showAddressEdit) {
-      const t = setTimeout(scrollAddressIntoView, 150);
-      return () => clearTimeout(t);
-    }
-  }, [showAddressEdit, scrollAddressIntoView]);
 
   useEffect(() => {
     if (me.data) {
@@ -291,16 +266,6 @@ export default function CompteScreen() {
   const initial = (displayName || email || '?').trim().charAt(0).toUpperCase();
   const named = hasDisplayName(me.data ?? {});
   const otherHouses = (houses.data ?? []).filter((h) => h.id !== currentHouseId.data);
-  const bedSummary = (() => {
-    if (!activeHouse) return 'Non configurées';
-    const s = activeHouse.single_beds ?? 0;
-    const d = activeHouse.double_beds ?? 0;
-    if (s + d <= 0) return 'Non configurées';
-    const parts: string[] = [];
-    if (s > 0) parts.push(`${s} simple${s > 1 ? 's' : ''}`);
-    if (d > 0) parts.push(`${d} double${d > 1 ? 's' : ''}`);
-    return parts.join(' · ');
-  })();
 
   if (!ready) {
     return (
@@ -321,7 +286,6 @@ export default function CompteScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
     >
       <ScrollView
-        ref={scrollRef}
         style={{ flex: 1, backgroundColor: theme.colors.background }}
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
@@ -526,12 +490,12 @@ export default function CompteScreen() {
 
         <Divider style={styles.divider} />
 
-        {/* —— Maison active uniquement —— */}
+        {/* —— Maison : switch / create only (infos live under Maison tab) —— */}
         <Text
           variant="labelLarge"
           style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}
         >
-          Cette maison
+          Maison
         </Text>
 
         {houses.isLoading ? (
@@ -554,145 +518,17 @@ export default function CompteScreen() {
             </Text>
             <Text
               variant="bodySmall"
-              style={{ color: theme.colors.onSurfaceVariant, marginBottom: 12 }}
+              style={{ color: theme.colors.onSurfaceVariant, marginBottom: 4 }}
             >
-              {activeHouse.role === 'owner' ? 'Tu es propriétaire' : 'Tu es membre'}
+              Maison active
+              {activeHouse.role === 'owner' ? ' · propriétaire' : ' · membre'}
             </Text>
-
-            {activeHouse.role === 'owner' ? (
-              <View
-                onLayout={(e) => {
-                  addressBlockY.current = e.nativeEvent.layout.y;
-                }}
-              >
-                {showAddressEdit ? (
-                  <View style={styles.inlineForm}>
-                    <TextInput
-                      mode="outlined"
-                      dense
-                      label="Adresse"
-                      multiline
-                      value={addressDraft}
-                      onChangeText={setAddressDraft}
-                      onFocus={scrollAddressIntoView}
-                      style={[styles.field, { minHeight: 72 }]}
-                    />
-                    <View style={styles.ctaRow}>
-                      <Button compact onPress={() => setShowAddressEdit(false)}>
-                        Annuler
-                      </Button>
-                      <Button
-                        compact
-                        mode="contained-tonal"
-                        loading={updateHouseFields.isPending}
-                        onPress={() => {
-                          setError(null);
-                          void updateHouseFields
-                            .mutateAsync({ address: addressDraft.trim() })
-                            .then(() => {
-                              setShowAddressEdit(false);
-                              setAddressDraft('');
-                            })
-                            .catch((e) =>
-                              setError(
-                                e instanceof Error ? e.message : 'enregistrement impossible',
-                              ),
-                            );
-                        }}
-                      >
-                        Enregistrer
-                      </Button>
-                    </View>
-                  </View>
-                ) : (
-                  <List.Item
-                    title="Adresse"
-                    description={
-                      activeHouse.address?.trim() || 'Non renseignée — appuie pour définir'
-                    }
-                    descriptionNumberOfLines={3}
-                    left={(props) => <List.Icon {...props} icon="map-marker-outline" />}
-                    right={(props) => <List.Icon {...props} icon="chevron-right" />}
-                    onPress={() => {
-                      setAddressDraft(activeHouse.address ?? '');
-                      setShowAddressEdit(true);
-                    }}
-                    style={styles.listRow}
-                  />
-                )}
-
-                {showCapacityEdit ? (
-                  <View style={styles.inlineForm}>
-                    <View style={styles.bedRow}>
-                      <TextInput
-                        mode="outlined"
-                        dense
-                        label="Lits simples"
-                        keyboardType="number-pad"
-                        value={singleBedsDraft}
-                        onChangeText={setSingleBedsDraft}
-                        style={[styles.field, { flex: 1 }]}
-                      />
-                      <TextInput
-                        mode="outlined"
-                        dense
-                        label="Lits doubles"
-                        keyboardType="number-pad"
-                        value={doubleBedsDraft}
-                        onChangeText={setDoubleBedsDraft}
-                        style={[styles.field, { flex: 1 }]}
-                      />
-                    </View>
-                    <View style={styles.ctaRow}>
-                      <Button compact onPress={() => setShowCapacityEdit(false)}>
-                        Annuler
-                      </Button>
-                      <Button
-                        compact
-                        mode="contained-tonal"
-                        loading={updateHouseFields.isPending}
-                        onPress={() => {
-                          const s = parseInt(singleBedsDraft, 10);
-                          const d = parseInt(doubleBedsDraft, 10);
-                          if (Number.isNaN(s) || s < 0 || Number.isNaN(d) || d < 0) {
-                            setError('Nombre de lits invalide');
-                            return;
-                          }
-                          setError(null);
-                          void updateHouseFields
-                            .mutateAsync({ single_beds: s, double_beds: d })
-                            .then(() => {
-                              setShowCapacityEdit(false);
-                              setSingleBedsDraft('');
-                              setDoubleBedsDraft('');
-                            })
-                            .catch((e) =>
-                              setError(
-                                e instanceof Error ? e.message : 'enregistrement impossible',
-                              ),
-                            );
-                        }}
-                      >
-                        Enregistrer
-                      </Button>
-                    </View>
-                  </View>
-                ) : (
-                  <List.Item
-                    title="Chambres"
-                    description={bedSummary}
-                    left={(props) => <List.Icon {...props} icon="bed-outline" />}
-                    right={(props) => <List.Icon {...props} icon="chevron-right" />}
-                    onPress={() => {
-                      setSingleBedsDraft(String(activeHouse.single_beds ?? 0));
-                      setDoubleBedsDraft(String(activeHouse.double_beds ?? 0));
-                      setShowCapacityEdit(true);
-                    }}
-                    style={styles.listRow}
-                  />
-                )}
-              </View>
-            ) : null}
+            <Text
+              variant="bodySmall"
+              style={{ color: theme.colors.outline, marginBottom: 8, lineHeight: 18 }}
+            >
+              Adresse et capacité se règlent dans Maison → Infos.
+            </Text>
 
             {otherHouses.length > 0 ? (
               <>
@@ -701,7 +537,7 @@ export default function CompteScreen() {
                   compact
                   icon={showHouseSwitcher ? 'chevron-up' : 'swap-horizontal'}
                   onPress={() => setShowHouseSwitcher((v) => !v)}
-                  style={{ alignSelf: 'flex-start', marginTop: 4 }}
+                  style={{ alignSelf: 'flex-start', marginLeft: -8 }}
                 >
                   {showHouseSwitcher ? 'Masquer' : 'Changer de maison'}
                 </Button>
@@ -824,12 +660,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  bedRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
   addHouseLink: {
-    marginTop: 20,
+    marginTop: 16,
     alignSelf: 'flex-start',
     paddingVertical: 6,
   },

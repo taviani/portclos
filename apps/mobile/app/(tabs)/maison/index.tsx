@@ -91,15 +91,21 @@ export default function MaisonHubScreen() {
                 marginTop: 8,
                 lineHeight: 20,
               }}
-              onPress={() => router.push('/compte')}
+              onPress={() => router.push('/(tabs)/maison/infos' as Href)}
             >
-              Ajouter l’adresse dans Compte
+              Ajouter l’adresse
             </Text>
           ) : null}
           <BeaconBar style={{ marginTop: 12 }} />
         </View>
         <LighthouseMark width={72} height={94} glowOpacity={0.55} />
       </View>
+      <MenuRow
+        title="Infos"
+        subtitle="Adresse et capacité"
+        icon="home-city-outline"
+        onPress={() => router.push('/(tabs)/maison/infos' as Href)}
+      />
       <MenuRow
         title="Fermeture"
         subtitle="Checklist avant de partir"
