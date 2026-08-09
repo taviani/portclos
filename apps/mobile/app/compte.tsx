@@ -403,14 +403,6 @@ export default function CompteScreen() {
 
         <Divider style={styles.divider} />
 
-        {/* —— Sécurité —— */}
-        <Text
-          variant="labelLarge"
-          style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}
-        >
-          Sécurité
-        </Text>
-
         {showPasswordEdit ? (
           <View style={styles.inlineForm}>
             <TextInput
@@ -461,42 +453,37 @@ export default function CompteScreen() {
             </View>
           </View>
         ) : (
-          <List.Item
-            title="Changer le mot de passe"
-            left={(props) => <List.Icon {...props} icon="lock-outline" />}
-            right={(props) => <List.Icon {...props} icon="chevron-right" />}
+          <Button
+            mode="outlined"
+            icon="lock-reset"
             onPress={() => {
               setPasswordOk(false);
               setShowPasswordEdit(true);
             }}
-            style={styles.listRow}
-          />
+            style={styles.cta}
+            contentStyle={styles.ctaContent}
+          >
+            Changer le mot de passe
+          </Button>
         )}
         {passwordOk ? (
-          <Text style={{ color: theme.colors.primary, marginBottom: 8 }}>
+          <Text style={{ color: theme.colors.primary, marginTop: 8 }}>
             Mot de passe mis à jour.
           </Text>
         ) : null}
 
-        <List.Item
-          title="Se déconnecter"
-          titleStyle={{ color: theme.colors.error }}
-          left={(props) => (
-            <List.Icon {...props} icon="logout" color={theme.colors.error} />
-          )}
+        <Button
+          mode="outlined"
+          icon="logout"
           onPress={() => void signOut()}
-          style={styles.listRow}
-        />
+          style={[styles.cta, { marginTop: 12, borderColor: theme.colors.error }]}
+          contentStyle={styles.ctaContent}
+          textColor={theme.colors.error}
+        >
+          Se déconnecter
+        </Button>
 
         <Divider style={styles.divider} />
-
-        {/* —— Maison : switch / create only (infos live under Maison tab) —— */}
-        <Text
-          variant="labelLarge"
-          style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}
-        >
-          Maison
-        </Text>
 
         {houses.isLoading ? (
           <ActivityIndicator animating color={theme.colors.primary} />
@@ -504,68 +491,55 @@ export default function CompteScreen() {
           <Text style={{ color: theme.colors.outline, marginBottom: 8 }}>
             Aucune maison pour l’instant.
           </Text>
-        ) : (
+        ) : otherHouses.length > 0 ? (
           <>
-            <Text
-              variant="titleMedium"
-              style={{
-                color: theme.colors.onBackground,
-                fontWeight: '700',
-                marginBottom: 4,
-              }}
-            >
-              {activeHouse.name}
-            </Text>
-            <Text
-              variant="bodySmall"
-              style={{ color: theme.colors.onSurfaceVariant, marginBottom: 4 }}
-            >
-              Maison active
-              {activeHouse.role === 'owner' ? ' · propriétaire' : ' · membre'}
-            </Text>
-            <Text
-              variant="bodySmall"
-              style={{ color: theme.colors.outline, marginBottom: 8, lineHeight: 18 }}
-            >
-              Adresse et capacité se règlent dans Maison → Infos.
-            </Text>
-
-            {otherHouses.length > 0 ? (
-              <>
+            {showHouseSwitcher ? (
+              <View style={{ marginBottom: 8 }}>
+                {otherHouses.map((h) => (
+                  <List.Item
+                    key={h.id}
+                    title={h.name}
+                    description={h.role}
+                    left={(props) => <List.Icon {...props} icon="home-outline" />}
+                    onPress={() => void onSelectHouse(h.id)}
+                    style={styles.listRow}
+                  />
+                ))}
                 <Button
                   mode="text"
                   compact
-                  icon={showHouseSwitcher ? 'chevron-up' : 'swap-horizontal'}
-                  onPress={() => setShowHouseSwitcher((v) => !v)}
-                  style={{ alignSelf: 'flex-start', marginLeft: -8 }}
+                  onPress={() => setShowHouseSwitcher(false)}
+                  style={{ alignSelf: 'flex-start' }}
                 >
-                  {showHouseSwitcher ? 'Masquer' : 'Changer de maison'}
+                  Masquer
                 </Button>
-                {showHouseSwitcher
-                  ? otherHouses.map((h) => (
-                      <List.Item
-                        key={h.id}
-                        title={h.name}
-                        description={h.role}
-                        left={(props) => <List.Icon {...props} icon="home-outline" />}
-                        onPress={() => void onSelectHouse(h.id)}
-                        style={styles.listRow}
-                      />
-                    ))
-                  : null}
-              </>
-            ) : null}
+              </View>
+            ) : (
+              <Button
+                mode="outlined"
+                icon="swap-horizontal"
+                onPress={() => setShowHouseSwitcher(true)}
+                style={styles.cta}
+                contentStyle={styles.ctaContent}
+              >
+                Changer de maison
+              </Button>
+            )}
           </>
-        )}
+        ) : null}
 
         {!showAddHouse ? (
-          <Pressable onPress={() => setShowAddHouse(true)} style={styles.addHouseLink}>
-            <Text variant="bodySmall" style={{ color: theme.colors.outline }}>
-              Ajouter une maison…
-            </Text>
-          </Pressable>
+          <Button
+            mode="outlined"
+            icon="home-plus-outline"
+            onPress={() => setShowAddHouse(true)}
+            style={[styles.cta, { marginTop: otherHouses.length > 0 ? 12 : 0 }]}
+            contentStyle={styles.ctaContent}
+          >
+            Ajouter une maison
+          </Button>
         ) : (
-          <View style={styles.inlineForm}>
+          <View style={[styles.inlineForm, { marginTop: 12 }]}>
             <TextInput
               mode="outlined"
               dense
@@ -635,11 +609,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
     gap: 8,
   },
-  sectionLabel: {
-    marginBottom: 4,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
   divider: {
     marginVertical: 22,
   },
@@ -654,15 +623,18 @@ const styles = StyleSheet.create({
   field: {
     backgroundColor: 'transparent',
   },
+  cta: {
+    alignSelf: 'stretch',
+    borderRadius: 12,
+  },
+  ctaContent: {
+    justifyContent: 'flex-start',
+    minHeight: 48,
+  },
   ctaRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: 4,
-  },
-  addHouseLink: {
-    marginTop: 16,
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
   },
 });
