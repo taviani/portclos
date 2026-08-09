@@ -71,9 +71,8 @@ export default function CompteScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPasswordEdit, setShowPasswordEdit] = useState(false);
-  const [showHouseSwitcher, setShowHouseSwitcher] = useState(false);
+  const [showHouses, setShowHouses] = useState(false);
   const [newHouse, setNewHouse] = useState('');
-  const [showAddHouse, setShowAddHouse] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passwordOk, setPasswordOk] = useState(false);
 
@@ -240,7 +239,7 @@ export default function CompteScreen() {
     try {
       await createHouse.mutateAsync(newHouse.trim());
       setNewHouse('');
-      setShowAddHouse(false);
+      setShowHouses(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'création impossible');
     }
@@ -250,7 +249,7 @@ export default function CompteScreen() {
     async (id: string) => {
       try {
         await selectHouse.mutateAsync(id);
-        setShowHouseSwitcher(false);
+        setShowHouses(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'sélection impossible');
       }
@@ -487,69 +486,42 @@ export default function CompteScreen() {
 
         {houses.isLoading ? (
           <ActivityIndicator animating color={theme.colors.primary} />
-        ) : !activeHouse ? (
-          <Text style={{ color: theme.colors.outline, marginBottom: 8 }}>
-            Aucune maison pour l’instant.
-          </Text>
-        ) : otherHouses.length > 0 ? (
-          <>
-            {showHouseSwitcher ? (
-              <View style={{ marginBottom: 8 }}>
-                {otherHouses.map((h) => (
-                  <List.Item
-                    key={h.id}
-                    title={h.name}
-                    description={h.role}
-                    left={(props) => <List.Icon {...props} icon="home-outline" />}
-                    onPress={() => void onSelectHouse(h.id)}
-                    style={styles.listRow}
-                  />
-                ))}
-                <Button
-                  mode="text"
-                  compact
-                  onPress={() => setShowHouseSwitcher(false)}
-                  style={{ alignSelf: 'flex-start' }}
-                >
-                  Masquer
-                </Button>
-              </View>
-            ) : (
-              <Button
-                mode="outlined"
-                icon="swap-horizontal"
-                onPress={() => setShowHouseSwitcher(true)}
-                style={styles.cta}
-                contentStyle={styles.ctaContent}
+        ) : showHouses ? (
+          <View style={styles.inlineForm}>
+            {activeHouse ? (
+              <Text
+                variant="bodyMedium"
+                style={{ color: theme.colors.onSurfaceVariant, marginBottom: 4 }}
               >
-                Changer de maison
-              </Button>
-            )}
-          </>
-        ) : null}
-
-        {!showAddHouse ? (
-          <Button
-            mode="outlined"
-            icon="home-plus-outline"
-            onPress={() => setShowAddHouse(true)}
-            style={[styles.cta, { marginTop: otherHouses.length > 0 ? 12 : 0 }]}
-            contentStyle={styles.ctaContent}
-          >
-            Ajouter une maison
-          </Button>
-        ) : (
-          <View style={[styles.inlineForm, { marginTop: 12 }]}>
+                Actuelle · {activeHouse.name}
+              </Text>
+            ) : null}
+            {otherHouses.map((h) => (
+              <List.Item
+                key={h.id}
+                title={h.name}
+                description={h.role}
+                left={(props) => <List.Icon {...props} icon="home-outline" />}
+                onPress={() => void onSelectHouse(h.id)}
+                style={styles.listRow}
+              />
+            ))}
             <TextInput
               mode="outlined"
               dense
-              label="Nom de la maison"
+              label="Nouvelle maison"
               value={newHouse}
               onChangeText={setNewHouse}
               style={styles.field}
             />
             <View style={styles.ctaRow}>
-              <Button compact onPress={() => setShowAddHouse(false)}>
+              <Button
+                compact
+                onPress={() => {
+                  setShowHouses(false);
+                  setNewHouse('');
+                }}
+              >
                 Annuler
               </Button>
               <Button
@@ -559,10 +531,20 @@ export default function CompteScreen() {
                 loading={createHouse.isPending}
                 disabled={!newHouse.trim() || createHouse.isPending}
               >
-                Créer
+                Ajouter
               </Button>
             </View>
           </View>
+        ) : (
+          <Button
+            mode="outlined"
+            icon="home-outline"
+            onPress={() => setShowHouses(true)}
+            style={styles.cta}
+            contentStyle={styles.ctaContent}
+          >
+            Changer / ajouter une maison
+          </Button>
         )}
 
         {error || queryError ? (
