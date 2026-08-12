@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import {
   ActivityIndicator,
@@ -8,7 +8,7 @@ import {
   Text,
 } from 'react-native-paper';
 
-import { useClosings, useStartClosing } from '@/hooks/useClosing';
+import { useCancelClosing, useClosings, useStartClosing } from '@/hooks/useClosing';
 import { useCurrentHouse } from '@/hooks/useHouses';
 import { useAppTheme } from '@/theme/paper';
 
@@ -27,6 +27,8 @@ export default function FermetureHomeScreen() {
   const { house, isLoading } = useCurrentHouse();
   const closings = useClosings(house?.id);
   const start = useStartClosing(house?.id);
+  const openClosing = (closings.data ?? []).find((c) => c.status === 'open');
+  const cancel = useCancelClosing(openClosing?.id, house?.id);
 
   if (isLoading || closings.isLoading) {
     return (
@@ -46,8 +48,28 @@ export default function FermetureHomeScreen() {
     );
   }
 
-  const open = (closings.data ?? []).find((c) => c.status === 'open');
+  const open = openClosing;
   const recent = (closings.data ?? []).filter((c) => c.status === 'completed').slice(0, 8);
+
+  const confirmCancelOpen = () => {
+    if (!open) return;
+    Alert.alert(
+      'Annuler cette fermeture ?',
+      'La checklist en cours sera abandonnée. Tu pourras en recommencer une après.',
+      [
+        { text: 'Non', style: 'cancel' },
+        {
+          text: 'Oui, annuler',
+          style: 'destructive',
+          onPress: () => {
+            void cancel.mutateAsync().catch(() => {
+              /* error surfaced via cancel.error below */
+            });
+          },
+        },
+      ],
+    );
+  };
 
   const beginOrResume = () => {
     if (open) {
@@ -103,19 +125,40 @@ export default function FermetureHomeScreen() {
               : 'Une checklist claire, étape par étape.'}
           </Text>
         </Card.Content>
-        <Card.Actions style={{ paddingBottom: 12, paddingHorizontal: 12 }}>
+        <Card.Actions
+          style={{
+            paddingBottom: 12,
+            paddingHorizontal: 12,
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            gap: 4,
+          }}
+        >
           <Button
             mode="contained"
             icon={open ? 'play' : 'play-circle'}
             loading={start.isPending}
+            disabled={cancel.isPending}
             onPress={beginOrResume}
             buttonColor={theme.colors.primary}
             textColor={theme.colors.onPrimary}
             contentStyle={{ minHeight: 48 }}
-            style={{ borderRadius: 14, flex: 1 }}
+            style={{ borderRadius: 14 }}
           >
             {open ? 'Reprendre' : 'Commencer'}
           </Button>
+          {open ? (
+            <Button
+              mode="text"
+              icon="close-circle-outline"
+              loading={cancel.isPending}
+              disabled={start.isPending || cancel.isPending}
+              onPress={confirmCancelOpen}
+              textColor={theme.colors.error}
+            >
+              Annuler la fermeture
+            </Button>
+          ) : null}
         </Card.Actions>
       </Card>
 
@@ -129,9 +172,11 @@ export default function FermetureHomeScreen() {
         Modifier le modèle
       </Button>
 
-      {start.error ? (
+      {start.error || cancel.error ? (
         <Text style={{ color: theme.colors.error, marginTop: 12 }}>
-          {start.error instanceof Error ? start.error.message : 'Erreur'}
+          {(start.error instanceof Error && start.error.message) ||
+            (cancel.error instanceof Error && cancel.error.message) ||
+            'Erreur'}
         </Text>
       ) : null}
 

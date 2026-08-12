@@ -24,7 +24,7 @@ export type Closing = {
   id: string;
   house_id: string;
   started_by: string;
-  status: 'open' | 'completed';
+  status: 'open' | 'completed' | 'cancelled';
   started_at: string;
   completed_at?: string;
 };
@@ -138,6 +138,16 @@ export async function completeClosing(
   closingId: string,
 ): Promise<ClosingDetail> {
   return getJSON(`/closings/${closingId}/complete`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function cancelClosing(
+  accessToken: string,
+  closingId: string,
+): Promise<ClosingDetail> {
+  return getJSON(`/closings/${closingId}/cancel`, {
     method: 'POST',
     headers: authHeaders(accessToken),
   });
