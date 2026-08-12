@@ -6,7 +6,8 @@
   "build": {
     "preview": {
       "distribution": "store",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "environment": "preview"
     },
     "production": {
       "autoIncrement": true
