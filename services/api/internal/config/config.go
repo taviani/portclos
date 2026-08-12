@@ -12,6 +12,7 @@ type Config struct {
 	AuthDisabled bool
 	DatabaseURL  string
 	UploadDir    string
+	LogLevel     string
 }
 
 func Load() (Config, error) {
@@ -36,11 +37,16 @@ func Load() (Config, error) {
 	if uploadDir == "" {
 		uploadDir = "./data/uploads"
 	}
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "info"
+	}
 	return Config{
 		Port:         port,
 		AuthIssuer:   issuer,
 		AuthDisabled: disabled,
 		DatabaseURL:  dbURL,
 		UploadDir:    uploadDir,
+		LogLevel:     logLevel,
 	}, nil
 }

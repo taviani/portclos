@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 
@@ -24,12 +23,12 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 	pr.Get("/me", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 		p, err := db.GetOrCreateProfile(r.Context(), user.Subject)
 		if err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		if user.Email != "" {
@@ -42,14 +41,14 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 	pr.Patch("/me", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 		var body struct {
 			DisplayName string `json:"display_name"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
 			return
 		}
 		name := strings.TrimSpace(body.DisplayName)
@@ -66,7 +65,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		}
 		p, err := db.UpdateDisplayName(r.Context(), user.Subject, name)
 		if err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		if p.Email == "" {
@@ -78,7 +77,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 	pr.Post("/me/avatar", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 		_, contentType, buf, okUpload := readImageUpload(w, r)
@@ -88,15 +87,13 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		photoID := uuid.NewString()
 		storageKey := "avatars/" + photoID + media.ExtForContentType(contentType)
 		if err := files.Save(storageKey, bytes.NewReader(buf)); err != nil {
-			log.Printf("avatar save: %v", err)
-			http.Error(w, `{"error":"upload_storage_failed"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "upload_storage_failed", err)
 			return
 		}
 		old, p, err := db.SetAvatar(r.Context(), user.Subject, storageKey, contentType)
 		if err != nil {
 			_ = files.Remove(storageKey)
-			log.Printf("avatar db: %v", err)
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		if old.StorageKey != "" && old.StorageKey != storageKey {
@@ -111,17 +108,17 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 
 	pr.Get("/avatars/{userSub}", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := auth.UserFromContext(r.Context()); !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 		meta, err := db.GetAvatarFile(r.Context(), chi.URLParam(r, "userSub"))
 		if err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		f, err := files.Open(meta.StorageKey)
 		if err != nil {
-			http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+			writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
 			return
 		}
 		defer f.Close()
@@ -132,12 +129,12 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 	pr.Delete("/me/avatar", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 		old, err := db.DeleteAvatar(r.Context(), user.Subject)
 		if err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		_ = files.Remove(old.StorageKey)
@@ -151,7 +148,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		}
 		list, err := db.ListHouseMembers(r.Context(), houseID)
 		if err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, list)
@@ -165,7 +162,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		}
 		list, err := db.ListBlogPosts(r.Context(), houseID, user.Subject)
 		if err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, list)
@@ -183,7 +180,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			Mentions []string `json:"mentions"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
 			return
 		}
 		title := strings.TrimSpace(body.Title)
@@ -203,7 +200,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		}
 		okMembers, err := db.AreHouseMembers(r.Context(), houseID, mentions)
 		if err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		if !okMembers {
@@ -214,7 +211,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			r.Context(), houseID, user.Subject, title, strings.TrimSpace(body.Body), tags, mentions,
 		)
 		if err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, p)
@@ -223,22 +220,22 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 	pr.Get("/posts/{postId}", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 		postID := chi.URLParam(r, "postId")
 		houseID, err := db.GetBlogPostHouseID(r.Context(), postID)
 		if err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		if _, err := db.GetHouseForMember(r.Context(), houseID, user.Subject); err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		p, err := db.GetBlogPost(r.Context(), postID, user.Subject)
 		if err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, p)
@@ -247,11 +244,11 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 	pr.Delete("/posts/{postId}", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 		if err := db.DeleteBlogPost(r.Context(), chi.URLParam(r, "postId"), user.Subject); err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -269,15 +266,13 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		photoID := uuid.NewString()
 		key := "blog/" + photoID + media.ExtForContentType(contentType)
 		if err := files.Save(key, bytes.NewReader(buf)); err != nil {
-			log.Printf("blog photo save: %v", err)
-			http.Error(w, `{"error":"upload_storage_failed"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "upload_storage_failed", err)
 			return
 		}
 		ph, err := db.AddBlogPhoto(r.Context(), chi.URLParam(r, "postId"), user.Subject, key, contentType)
 		if err != nil {
 			_ = files.Remove(key)
-			log.Printf("blog photo db: %v", err)
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, ph)
@@ -286,21 +281,21 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 	pr.Get("/blog-photos/{photoId}", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 		meta, err := db.GetBlogPhotoFile(r.Context(), chi.URLParam(r, "photoId"))
 		if err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		if _, err := db.GetHouseForMember(r.Context(), meta.HouseID, user.Subject); err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		f, err := files.Open(meta.StorageKey)
 		if err != nil {
-			http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+			writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
 			return
 		}
 		defer f.Close()
@@ -317,7 +312,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			Body string `json:"body"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
 			return
 		}
 		text := strings.TrimSpace(body.Body)
@@ -327,7 +322,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		}
 		c, err := db.AddBlogComment(r.Context(), chi.URLParam(r, "postId"), user.Subject, text)
 		if err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, c)
@@ -336,11 +331,11 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 	pr.Delete("/comments/{commentId}", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 		if err := db.DeleteBlogComment(r.Context(), chi.URLParam(r, "commentId"), user.Subject); err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -355,7 +350,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			Emoji string `json:"emoji"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
 			return
 		}
 		emoji := strings.TrimSpace(body.Emoji)
@@ -364,12 +359,12 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		if err := db.SetBlogReaction(r.Context(), chi.URLParam(r, "postId"), user.Subject, emoji); err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		p, err := db.GetBlogPost(r.Context(), chi.URLParam(r, "postId"), user.Subject)
 		if err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, p.Reactions)
@@ -381,7 +376,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		if err := db.ClearBlogReaction(r.Context(), chi.URLParam(r, "postId"), user.Subject); err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -395,7 +390,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		}
 		list, err := db.ListHelpArticles(r.Context(), houseID, user.Subject)
 		if err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, list)
@@ -411,7 +406,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			Body  string `json:"body"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
 			return
 		}
 		title := strings.TrimSpace(body.Title)
@@ -421,12 +416,12 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		}
 		order, err := db.NextHelpSortOrder(r.Context(), houseID)
 		if err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		a, err := db.CreateHelpArticle(r.Context(), houseID, user.Subject, title, strings.TrimSpace(body.Body), order)
 		if err != nil {
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, a)
@@ -435,22 +430,22 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 	pr.Get("/help/{articleId}", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 		articleID := chi.URLParam(r, "articleId")
 		houseID, err := db.GetHelpHouseID(r.Context(), articleID)
 		if err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		if _, err := db.GetHouseForMember(r.Context(), houseID, user.Subject); err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		a, err := db.GetHelpArticle(r.Context(), articleID)
 		if err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, a)
@@ -465,7 +460,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			Body  string `json:"body"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
 			return
 		}
 		title := strings.TrimSpace(body.Title)
@@ -475,7 +470,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		}
 		a, err := db.UpdateHelpArticle(r.Context(), chi.URLParam(r, "articleId"), title, strings.TrimSpace(body.Body))
 		if err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, a)
@@ -486,7 +481,7 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		if err := db.DeleteHelpArticle(r.Context(), chi.URLParam(r, "articleId")); err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -504,15 +499,13 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		photoID := uuid.NewString()
 		key := "help/" + photoID + media.ExtForContentType(contentType)
 		if err := files.Save(key, bytes.NewReader(buf)); err != nil {
-			log.Printf("help photo save: %v", err)
-			http.Error(w, `{"error":"upload_storage_failed"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "upload_storage_failed", err)
 			return
 		}
 		ph, err := db.AddHelpPhoto(r.Context(), chi.URLParam(r, "articleId"), user.Subject, key, contentType)
 		if err != nil {
 			_ = files.Remove(key)
-			log.Printf("help photo db: %v", err)
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, ph)
@@ -521,21 +514,21 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 	pr.Get("/help-photos/{photoId}", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFromContext(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 			return
 		}
 		meta, err := db.GetHelpPhotoFile(r.Context(), chi.URLParam(r, "photoId"))
 		if err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		if _, err := db.GetHouseForMember(r.Context(), meta.HouseID, user.Subject); err != nil {
-			writeStoreErr(w, err)
+			writeStoreErr(w, r, err)
 			return
 		}
 		f, err := files.Open(meta.StorageKey)
 		if err != nil {
-			http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+			writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
 			return
 		}
 		defer f.Close()
@@ -547,16 +540,16 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 func requireBlogMember(w http.ResponseWriter, r *http.Request, db *store.Store) (auth.User, bool) {
 	user, ok := auth.UserFromContext(r.Context())
 	if !ok {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 		return auth.User{}, false
 	}
 	houseID, err := db.GetBlogPostHouseID(r.Context(), chi.URLParam(r, "postId"))
 	if err != nil {
-		writeStoreErr(w, err)
+		writeStoreErr(w, r, err)
 		return auth.User{}, false
 	}
 	if _, err := db.GetHouseForMember(r.Context(), houseID, user.Subject); err != nil {
-		writeStoreErr(w, err)
+		writeStoreErr(w, r, err)
 		return auth.User{}, false
 	}
 	return user, true
@@ -565,16 +558,16 @@ func requireBlogMember(w http.ResponseWriter, r *http.Request, db *store.Store) 
 func requireHelpMember(w http.ResponseWriter, r *http.Request, db *store.Store) (auth.User, bool) {
 	user, ok := auth.UserFromContext(r.Context())
 	if !ok {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 		return auth.User{}, false
 	}
 	houseID, err := db.GetHelpHouseID(r.Context(), chi.URLParam(r, "articleId"))
 	if err != nil {
-		writeStoreErr(w, err)
+		writeStoreErr(w, r, err)
 		return auth.User{}, false
 	}
 	if _, err := db.GetHouseForMember(r.Context(), houseID, user.Subject); err != nil {
-		writeStoreErr(w, err)
+		writeStoreErr(w, r, err)
 		return auth.User{}, false
 	}
 	return user, true
@@ -602,7 +595,7 @@ func readImageUpload(w http.ResponseWriter, r *http.Request) (filename, contentT
 	}
 	buf, err = io.ReadAll(io.LimitReader(file, maxPhotoBytes+1))
 	if err != nil {
-		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 		return "", "", nil, false
 	}
 	if len(buf) > maxPhotoBytes {

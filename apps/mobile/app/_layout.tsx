@@ -6,9 +6,11 @@ import {
   Stack,
   ThemeProvider,
   useSegments,
+  type ErrorBoundaryProps,
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { AnimatedSplash } from '@/components/AnimatedSplash';
@@ -16,13 +18,10 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { useMe } from '@/hooks/useHouses';
 import { hasDisplayName } from '@/lib/displayName';
 import { appEntryHref } from '@/lib/navigation';
+import { reportClientEvent } from '@/lib/telemetry';
 import { AppProviders } from '@/providers/AppProviders';
 import { useSession } from '@/providers/SessionProvider';
-
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
+import { Lighthouse } from '@/theme/lighthouse';
 
 export const unstable_settings = {
   // Always enter via index so cold start / state restore cannot skip to a
@@ -31,6 +30,59 @@ export const unstable_settings = {
 };
 
 SplashScreen.preventAutoHideAsync();
+
+/** Reports fatal render errors to the API, then offers a retry. */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  useEffect(() => {
+    reportClientEvent({
+      kind: 'error',
+      name: 'ErrorBoundary',
+      message: error?.message ?? 'unknown',
+      meta: { stack: (error?.stack ?? '').slice(0, 1500) },
+    });
+  }, [error]);
+
+  return (
+    <View style={errorStyles.root}>
+      <Text style={errorStyles.title}>Portclos</Text>
+      <Text style={errorStyles.body}>Une erreur inattendue est survenue.</Text>
+      <Pressable onPress={retry} style={errorStyles.cta} accessibilityRole="button">
+        <Text style={errorStyles.ctaLabel}>Réessayer</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const errorStyles = StyleSheet.create({
+  root: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 28,
+    backgroundColor: Lighthouse.foam,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: Lighthouse.seaInk,
+    marginBottom: 8,
+  },
+  body: {
+    fontSize: 16,
+    color: Lighthouse.mistMuted,
+    marginBottom: 24,
+  },
+  cta: {
+    alignSelf: 'flex-start',
+    backgroundColor: Lighthouse.sea,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  ctaLabel: {
+    color: Lighthouse.foam,
+    fontWeight: '700',
+    fontSize: 16,
+  },
+});
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({

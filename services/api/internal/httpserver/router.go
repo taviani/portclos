@@ -21,8 +21,8 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
+	r.Use(accessAndUsage(db))
+	r.Use(recoverJSON)
 
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -30,17 +30,18 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 
 	r.Group(func(pr chi.Router) {
 		pr.Use(validator.Middleware)
+		mountEventRoutes(pr, db)
 		mountCommunityRoutes(pr, db, files)
 
 		pr.Get("/houses", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())
 			if !ok {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 				return
 			}
 			list, err := db.ListHouses(r.Context(), user.Subject)
 			if err != nil {
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, list)
@@ -49,14 +50,14 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 		pr.Post("/houses", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())
 			if !ok {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 				return
 			}
 			var body struct {
 				Name string `json:"name"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+				writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
 				return
 			}
 			name := strings.TrimSpace(body.Name)
@@ -66,7 +67,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 			}
 			h, err := db.CreateHouse(r.Context(), user.Subject, name)
 			if err != nil {
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			writeJSON(w, http.StatusCreated, h)
@@ -75,17 +76,17 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 		pr.Get("/houses/{id}", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())
 			if !ok {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 				return
 			}
 			id := chi.URLParam(r, "id")
 			h, err := db.GetHouseForMember(r.Context(), id, user.Subject)
 			if err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+					writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
 					return
 				}
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, h)
@@ -94,7 +95,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 		pr.Patch("/houses/{id}", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())
 			if !ok {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 				return
 			}
 			houseID := chi.URLParam(r, "id")
@@ -105,7 +106,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 				Address     *string `json:"address"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+				writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
 				return
 			}
 			if body.BedCapacity == nil && body.Address == nil && body.SingleBeds == nil && body.DoubleBeds == nil {
@@ -120,11 +121,11 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 			})
 			if err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+					writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
 					return
 				}
 				if err.Error() == "forbidden" {
-					http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+					writeAPIError(w, r, http.StatusForbidden, "forbidden", nil)
 					return
 				}
 				if err.Error() == "capacity_too_high" {
@@ -135,7 +136,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 					http.Error(w, `{"error":"address_too_long"}`, http.StatusBadRequest)
 					return
 				}
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, h)
@@ -144,22 +145,22 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 		pr.Get("/houses/{id}/search", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())
 			if !ok {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 				return
 			}
 			houseID := chi.URLParam(r, "id")
 			if _, err := db.GetHouseForMember(r.Context(), houseID, user.Subject); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+					writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
 					return
 				}
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			q := strings.TrimSpace(r.URL.Query().Get("q"))
 			hits, err := db.SearchHouse(r.Context(), houseID, q, 20)
 			if err != nil {
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, hits)
@@ -168,17 +169,17 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 		pr.Get("/houses/{id}/occupations", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())
 			if !ok {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 				return
 			}
 			houseID := chi.URLParam(r, "id")
 			house, err := db.GetHouseForMember(r.Context(), houseID, user.Subject)
 			if err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+					writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
 					return
 				}
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			from, to, err := parseDateRange(r.URL.Query().Get("from"), r.URL.Query().Get("to"))
@@ -188,12 +189,12 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 			}
 			list, err := db.ListOccupations(r.Context(), houseID, from, to)
 			if err != nil {
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			loads, err := db.DayLoads(r.Context(), houseID, from, to)
 			if err != nil {
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
@@ -208,16 +209,16 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 		pr.Post("/houses/{id}/occupations", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())
 			if !ok {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 				return
 			}
 			houseID := chi.URLParam(r, "id")
 			if _, err := db.GetHouseForMember(r.Context(), houseID, user.Subject); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+					writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
 					return
 				}
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			var body struct {
@@ -232,7 +233,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 				} `json:"guests"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+				writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
 				return
 			}
 			start, end, err := parseDateRange(body.StartDate, body.EndDate)
@@ -275,7 +276,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 					http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
 					return
 				}
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			writeJSON(w, http.StatusCreated, map[string]any{
@@ -287,7 +288,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 		pr.Patch("/occupations/{id}", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())
 			if !ok {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 				return
 			}
 			id := chi.URLParam(r, "id")
@@ -303,7 +304,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 				} `json:"guests"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
+				writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
 				return
 			}
 			start, end, err := parseDateRange(body.StartDate, body.EndDate)
@@ -343,7 +344,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 			)
 			if err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+					writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
 					return
 				}
 				switch err.Error() {
@@ -354,7 +355,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 					http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
 					return
 				}
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
@@ -366,16 +367,16 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 		pr.Delete("/occupations/{id}", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())
 			if !ok {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
 				return
 			}
 			id := chi.URLParam(r, "id")
 			if err := db.DeleteOccupation(r.Context(), id, user.Subject); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+					writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
 					return
 				}
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
