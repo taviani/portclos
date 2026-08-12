@@ -80,7 +80,7 @@ Auth: Expo AuthSession + PKCE against the shared issuer. Current house id is sto
 
 Client data: **TanStack Query** (`QueryClientProvider` + `queryKeys`) for server state; session token via `SessionProvider`. Creating / selecting a house invalidates `houses` / `currentHouseId` so the Accueil tab updates without remounting. Future calendar keys: `occupations(houseId, month)`.
 
-Observability (self-hosted): JSON `slog` access logs + Postgres `usage_events` / `client_events`. See [docs/product/logging.md](docs/product/logging.md).
+Observability (self-hosted): JSON `slog` access logs + Postgres `usage_events` / `client_events`, explored via **Metabase** on localhost (`docker-compose` service `metabase`, SSH tunnel). See [docs/product/logging.md](docs/product/logging.md).
 
 ## Deploy — API (GitHub Actions → VPS)
 
