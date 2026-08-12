@@ -282,7 +282,7 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		}
 		detail, err := db.CancelClosing(r.Context(), chi.URLParam(r, "closingId"))
 		if err != nil {
-			writeClosingItemErr(w, err)
+			writeClosingItemErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, detail)
