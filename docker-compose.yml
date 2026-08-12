@@ -33,6 +33,20 @@ services:
       db:
         condition: service_healthy
 
+  # Explore usage_events / client_events (and ad‑hoc SQL). Localhost only — SSH tunnel from your laptop.
+  metabase:
+    image: metabase/metabase:v0.53.15.x
+    ports:
+      - "127.0.0.1:${METABASE_HOST_PORT:-3000}:3000"
+    volumes:
+      - portclos_metabase:/metabase-data
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   portclos_pg:
   portclos_uploads:
+  portclos_metabase:

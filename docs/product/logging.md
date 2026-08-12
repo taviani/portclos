@@ -69,6 +69,33 @@ Stored in `client_events`. No tokens/PII beyond `user_sub` and short messages.
 
 ## Ops
 
+### Explore events — Metabase
+
+Compose includes **Metabase** (localhost only) to browse `usage_events` / `client_events` and build simple dashboards.
+
+```bash
+docker-compose up -d metabase
+# On the VPS, from your laptop:
+ssh -L 3000:127.0.0.1:3000 deploy@YOUR_VPS
+# then open http://127.0.0.1:3000
+```
+
+First-run wizard: create an admin user, then add a database:
+
+| Field | Value |
+|-------|--------|
+| Database type | PostgreSQL |
+| Host | `db` |
+| Port | `5432` |
+| Database name | same as `POSTGRES_DB` (default `portclos`) |
+| Username / password | `POSTGRES_USER` / `POSTGRES_PASSWORD` |
+
+Useful saved questions: recent 5xx from `usage_events`, screens by day from `client_events` (`kind = 'screen'`), errors with `meta → request_id`.
+
+Metabase is **not** exposed on the public internet (bound to `127.0.0.1`). No alerting built-in — optional later.
+
+### Raw logs
+
 On the VPS: `docker-compose logs -f api` for JSON lines. Keep Postgres backups as today; prune old events if the table grows:
 
 ```sql
@@ -78,4 +105,4 @@ DELETE FROM client_events WHERE created_at < now() - interval '90 days';
 
 ## Out of scope (for now)
 
-Sentry / PostHog / OpenTelemetry collectors. Revisit only if native crash symbolication or cross-service tracing becomes necessary.
+Sentry / PostHog / OpenTelemetry collectors, Slack/PagerDuty alerts. Revisit only if native crash symbolication, cross-service tracing, or on-call alerting becomes necessary.
