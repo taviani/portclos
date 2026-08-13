@@ -74,11 +74,31 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Only db+api — Metabase is behind compose profile and is not needed for smoke.
-      - name: Start stack
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25.12"
+          cache: true
+          cache-dependency-path: services/api/go.sum
+
+      # Skip rebuilding the API image (~35s). Postgres only in Docker; API binary on the runner.
+      - name: Start Postgres
         run: |
           cp .env.example .env
-          docker compose up -d --build --wait db api
+          docker compose up -d --wait db
+
+      - name: Build API
+        working-directory: services/api
+        run: go build -mod=readonly -o /tmp/portclos-api ./cmd/server
+
+      - name: Run API
+        run: |
+          set -a
+          # shellcheck disable=SC1091
+          source .env
+          set +a
+          mkdir -p data/uploads
+          /tmp/portclos-api > /tmp/portclos-api.log 2>&1 &
+          echo $! > /tmp/portclos-api.pid
 
       - name: Smoke test /health and houses
         run: |
@@ -86,7 +106,7 @@ jobs:
             if curl -fsS http://localhost:8080/health; then
               break
             fi
-            sleep 2
+            sleep 1
           done
           curl -fsS http://localhost:8080/health
           house_json=$(curl -fsS -X POST http://localhost:8080/houses \
@@ -104,7 +124,16 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: |
+          if [ -f /tmp/portclos-api.pid ]; then
+            kill "$(cat /tmp/portclos-api.pid)" 2>/dev/null || true
+          fi
+          if [ -f /tmp/portclos-api.log ]; then
+            echo "::group::API log"
+            cat /tmp/portclos-api.log
+            echo "::endgroup::"
+          fi
+          docker compose down -v
 
   # Single required-check friendly gate (success when API jobs succeed or are skipped).
   ci:
