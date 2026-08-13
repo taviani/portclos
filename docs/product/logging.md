@@ -74,7 +74,8 @@ Stored in `client_events`. No tokens/PII beyond `user_sub` and short messages.
 Compose includes **Metabase** (localhost only) to browse `usage_events` / `client_events` and build simple dashboards.
 
 ```bash
-docker-compose up -d metabase
+docker-compose --profile metabase up -d
+# or: docker-compose up -d metabase
 # On the VPS, from your laptop:
 ssh -L 3000:127.0.0.1:3000 deploy@YOUR_VPS
 # then open http://127.0.0.1:3000
