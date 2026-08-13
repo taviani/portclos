@@ -118,7 +118,16 @@ Optional: set **submit = true** to auto-submit iOS to TestFlight after the build
 
 ### One-time Expo / store setup
 
-1. Locally: `cd apps/mobile && npx eas-cli@latest login && npx eas-cli@latest init` — **do not commit** `owner` / `projectId` if the CLI writes them into `app.json`.
+1. Locally, one-time link (then stop using `eas init`):
+
+   ```bash
+   cd apps/mobile
+   cp .env.example .env   # if needed
+   npx eas-cli@latest login
+   npx eas-cli@latest init   # prints owner + project id; may dirty app.json
+   ```
+
+   Put `EXPO_OWNER` and `EXPO_PROJECT_ID` in gitignored `apps/mobile/.env` (see `.env.example`). **Discard** any `app.json` changes — `app.config.js` reads those env vars so you never commit them. Do not re-run `eas init`.
 2. Create the app in App Store Connect and Google Play Console (bundle / package id from `app.json`).
 3. Configure signing credentials in EAS only (not in git):
 
@@ -143,7 +152,7 @@ Optional: set **submit = true** to auto-submit iOS to TestFlight after the build
 | `EXPO_PUBLIC_API_URL` | Public HTTPS API base URL baked into the binary |
 | `EXPO_PUBLIC_AUTH_ISSUER` | OIDC issuer URL baked into the binary |
 | `EXPO_PUBLIC_AUTH_CLIENT_ID` | (Optional) OIDC client id; defaults to `portclos` |
-| `EXPO_PROJECT_ID` | EAS project id (injected into `app.json` at build time) |
+| `EXPO_PROJECT_ID` | EAS project id (`app.config.js` / CI env — not in git) |
 | `EXPO_OWNER` | (Optional) Expo account / org slug for EAS |
 | `EXPO_ASC_APP_ID` | (Optional) App Store Connect numeric app id for submit |
 
