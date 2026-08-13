@@ -81,14 +81,13 @@ jobs:
           cache-dependency-path: services/api/go.sum
 
       # Skip rebuilding the API image (~35s). Postgres only in Docker; API binary on the runner.
-      - name: Start Postgres
+      - name: Postgres + build API
         run: |
           cp .env.example .env
-          docker compose up -d --wait db
-
-      - name: Build API
-        working-directory: services/api
-        run: go build -mod=readonly -o /tmp/portclos-api ./cmd/server
+          docker compose up -d --wait db &
+          pg_pid=$!
+          (cd services/api && go build -mod=readonly -o /tmp/portclos-api ./cmd/server)
+          wait "$pg_pid"
 
       - name: Run API
         run: |
