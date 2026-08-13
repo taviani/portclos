@@ -2,9 +2,15 @@
  * Dynamic Expo config. EAS `owner` / `projectId` come from env only
  * (local `.env` or CI secrets) — never commit them in app.json.
  *
- * After a one-time `eas init`, copy the printed IDs into `.env` and
- * discard any app.json changes. Do not re-run `eas init`.
+ * For `eas build` / `eas submit`, set EXPO_OWNER + EXPO_PROJECT_ID in
+ * apps/mobile/.env (see .env.example). Do not re-run `eas init`
+ * (it cannot write into app.config.js).
  */
+const { loadProjectEnv } = require('@expo/env');
+
+// eas-cli does not always load .env before evaluating this file
+loadProjectEnv(__dirname, { silent: true });
+
 module.exports = ({ config }) => {
   const owner = process.env.EXPO_OWNER?.trim();
   const projectId = process.env.EXPO_PROJECT_ID?.trim();
@@ -15,8 +21,7 @@ module.exports = ({ config }) => {
       ? { ...extra.eas }
       : {};
 
-  // Prefer env; strip any values eas init may have written into app.json
-  // so a dirty local app.json is not required for builds.
+  // Prefer env; ignore any values eas may have written into app.json.
   delete easExtra.projectId;
   if (projectId) {
     easExtra.projectId = projectId;
