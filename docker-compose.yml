@@ -33,8 +33,12 @@ services:
       db:
         condition: service_healthy
 
-  # Explore usage_events / client_events (and ad‑hoc SQL). Localhost only — SSH tunnel from your laptop.
+  # Explore usage_events / client_events (and ad‑hoc SQL). Localhost only — SSH tunnel.
+  # Profile keeps CI / default `up` fast (Metabase image is large and slow to start).
+  # Start with: docker-compose --profile metabase up -d
+  # Or target the service: docker-compose up -d metabase
   metabase:
+    profiles: ["metabase"]
     image: metabase/metabase:v0.53.15.x
     ports:
       - "127.0.0.1:${METABASE_HOST_PORT:-3000}:3000"

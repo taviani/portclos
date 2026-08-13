@@ -30,7 +30,8 @@ Visual / brand changes: edit `apps/mobile/theme/lighthouse.ts` first, then Paper
 
 ```bash
 cp .env.example .env
-docker-compose up -d --build
+docker-compose up -d --build          # api + db
+# optional: docker-compose --profile metabase up -d
 curl -fsS http://localhost:8080/health
 ```
 
@@ -80,11 +81,11 @@ Auth: Expo AuthSession + PKCE against the shared issuer. Current house id is sto
 
 Client data: **TanStack Query** (`QueryClientProvider` + `queryKeys`) for server state; session token via `SessionProvider`. Creating / selecting a house invalidates `houses` / `currentHouseId` so the Accueil tab updates without remounting. Future calendar keys: `occupations(houseId, month)`.
 
-Observability (self-hosted): JSON `slog` access logs + Postgres `usage_events` / `client_events`, explored via **Metabase** on localhost (`docker-compose` service `metabase`, SSH tunnel). See [docs/product/logging.md](docs/product/logging.md).
+Observability (self-hosted): JSON `slog` access logs + Postgres `usage_events` / `client_events`, explored via **Metabase** (compose profile `metabase`, SSH tunnel). See [docs/product/logging.md](docs/product/logging.md).
 
 ## Deploy — API (GitHub Actions → VPS)
 
-On each push to `main`, CI runs checks + smoke, then deploys via SSH/`rsync` + `docker-compose up -d --build`.
+On each push to `main`, CI runs API checks + smoke (in parallel), then deploys via SSH/`rsync` + `docker-compose --profile metabase up -d --build`. Mobile-only PRs skip API jobs.
 
 Photo uploads land in the `portclos_uploads` Docker volume (`UPLOAD_DIR=/data/uploads`). The API entrypoint chowns that dir to `nobody` on start so multipart saves succeed.
 

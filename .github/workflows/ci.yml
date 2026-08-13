@@ -11,8 +11,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.out.outputs.api }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            api:
+              - 'services/api/**'
+              - 'docker-compose.yml'
+              - '.github/workflows/ci.yml'
+              - '.env.example'
+      - id: out
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "api=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "api=${{ steps.filter.outputs.api }}" >> "$GITHUB_OUTPUT"
+          fi
+
   api-check:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     defaults:
       run:
         working-directory: services/api
@@ -34,21 +60,25 @@ jobs:
       - name: Test
         run: go test ./...
 
+      # Slow install+scan — keep on main / manual only, not every PR.
       - name: govulncheck
+        if: github.event_name != 'pull_request'
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
   api-smoke:
     runs-on: ubuntu-latest
-    needs: api-check
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     steps:
       - uses: actions/checkout@v7
 
+      # Only db+api — Metabase is behind compose profile and is not needed for smoke.
       - name: Start stack
         run: |
           cp .env.example .env
-          docker compose up -d --build --wait
+          docker compose up -d --build --wait db api
 
       - name: Smoke test /health and houses
         run: |
@@ -76,9 +106,27 @@ jobs:
         if: always()
         run: docker compose down -v
 
+  # Single required-check friendly gate (success when API jobs succeed or are skipped).
+  ci:
+    runs-on: ubuntu-latest
+    needs: [api-check, api-smoke]
+    if: always()
+    steps:
+      - name: Gate
+        run: |
+          check="${{ needs.api-check.result }}"
+          smoke="${{ needs.api-smoke.result }}"
+          echo "api-check=$check api-smoke=$smoke"
+          for r in "$check" "$smoke"; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "Failing gate due to: $r"; exit 1 ;;
+            esac
+          done
+
   deploy:
     runs-on: ubuntu-latest
-    needs: api-smoke
+    needs: [api-check, api-smoke]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     concurrency:
       group: deploy
@@ -128,4 +176,4 @@ jobs:
             --exclude .git \
             --exclude .expo \
             ./ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
-          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "cd ${DEPLOY_PATH} && docker-compose up -d --build"
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "cd ${DEPLOY_PATH} && docker-compose --profile metabase up -d --build"
