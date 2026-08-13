@@ -48,27 +48,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Inject private EAS / build env (not committed)
+      # owner / projectId: app.config.js reads EXPO_OWNER + EXPO_PROJECT_ID (no app.json mutate).
+      - name: Inject private build env into eas.json (not committed)
         env:
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
           EXPO_PUBLIC_AUTH_ISSUER: ${{ secrets.EXPO_PUBLIC_AUTH_ISSUER }}
           EXPO_PUBLIC_AUTH_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_AUTH_CLIENT_ID }}
           EXPO_ASC_APP_ID: ${{ secrets.EXPO_ASC_APP_ID }}
-          EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
-          EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
         run: |
           node <<'NODE'
           const fs = require("fs");
-          const app = JSON.parse(fs.readFileSync("app.json", "utf8"));
-          const projectId = process.env.EXPO_PROJECT_ID;
-          const owner = process.env.EXPO_OWNER;
-          app.expo.extra = app.expo.extra || {};
-          app.expo.extra.eas = { ...(app.expo.extra.eas || {}), projectId };
-          if (owner) {
-            app.expo.owner = owner;
-          }
-          fs.writeFileSync("app.json", JSON.stringify(app, null, 2) + "\n");
-
           const eas = JSON.parse(fs.readFileSync("eas.json", "utf8"));
           const apiUrl = process.env.EXPO_PUBLIC_API_URL;
           const authIssuer = process.env.EXPO_PUBLIC_AUTH_ISSUER;
@@ -104,6 +93,8 @@ jobs:
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
           EXPO_PUBLIC_AUTH_ISSUER: ${{ secrets.EXPO_PUBLIC_AUTH_ISSUER }}
           EXPO_PUBLIC_AUTH_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_AUTH_CLIENT_ID }}
+          EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
+          EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
           EXPO_ASC_APP_ID: ${{ secrets.EXPO_ASC_APP_ID }}
           WANT_SUBMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.submit || false }}
         run: |
