@@ -536,6 +536,30 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		http.ServeContent(w, r, meta.ID, meta.CreatedAt, f)
 	})
 
+	pr.Delete("/help-photos/{photoId}", func(w http.ResponseWriter, r *http.Request) {
+		user, ok := auth.UserFromContext(r.Context())
+		if !ok {
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
+			return
+		}
+		meta, err := db.GetHelpPhotoFile(r.Context(), chi.URLParam(r, "photoId"))
+		if err != nil {
+			writeStoreErr(w, r, err)
+			return
+		}
+		if _, err := db.GetHouseForMember(r.Context(), meta.HouseID, user.Subject); err != nil {
+			writeStoreErr(w, r, err)
+			return
+		}
+		removed, err := db.DeleteHelpPhoto(r.Context(), meta.ID)
+		if err != nil {
+			writeStoreErr(w, r, err)
+			return
+		}
+		_ = files.Remove(removed.StorageKey)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	pr.Post("/help/{articleId}/documents", func(w http.ResponseWriter, r *http.Request) {
 		user, ok := requireHelpMember(w, r, db)
 		if !ok {

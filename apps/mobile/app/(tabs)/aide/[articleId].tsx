@@ -17,12 +17,18 @@ import { useCurrentHouse } from '@/hooks/useHouses';
 import {
   useDeleteHelpArticle,
   useDeleteHelpDocument,
+  useDeleteHelpPhoto,
   useHelpArticle,
   useUpdateHelpArticle,
   useUploadHelpDocument,
   useUploadHelpPhoto,
 } from '@/hooks/useHelp';
-import { helpDocumentUrl, helpPhotoUrl, type HelpDocument } from '@/lib/api';
+import {
+  helpDocumentUrl,
+  helpPhotoUrl,
+  type HelpDocument,
+  type HelpPhoto,
+} from '@/lib/api';
 import { useSession } from '@/providers/SessionProvider';
 import { useAppTheme } from '@/theme/paper';
 
@@ -35,6 +41,7 @@ export default function AideArticleScreen() {
   const update = useUpdateHelpArticle(house?.id);
   const remove = useDeleteHelpArticle(house?.id);
   const uploadPhoto = useUploadHelpPhoto(house?.id);
+  const deletePhoto = useDeleteHelpPhoto(house?.id, articleId);
   const uploadDocument = useUploadHelpDocument(house?.id);
   const deleteDocument = useDeleteHelpDocument(house?.id, articleId);
 
@@ -43,6 +50,7 @@ export default function AideArticleScreen() {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openingDocId, setOpeningDocId] = useState<string | null>(null);
+  const [uploadingImages, setUploadingImages] = useState(false);
 
   useEffect(() => {
     if (article.data) {
@@ -66,9 +74,31 @@ export default function AideArticleScreen() {
     }
   };
 
-  const onAddPhoto = () => {
+  const uploadImageAssets = async (
+    assets: { uri: string; mimeType?: string | null }[],
+  ) => {
+    if (!articleId || assets.length === 0) return;
+    setError(null);
+    setUploadingImages(true);
+    try {
+      for (const asset of assets) {
+        await uploadPhoto.mutateAsync({
+          articleId,
+          uri: asset.uri,
+          mimeType: asset.mimeType,
+        });
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'upload impossible');
+    } finally {
+      setUploadingImages(false);
+    }
+  };
+
+  /** One tap → photothèque (multi). Caméra en option. */
+  const onAddImage = () => {
     if (!articleId) return;
-    Alert.alert('Ajouter une photo', undefined, [
+    Alert.alert('Ajouter des images', undefined, [
       {
         text: 'Photothèque',
         onPress: () => {
@@ -81,17 +111,11 @@ export default function AideArticleScreen() {
             const result = await ImagePicker.launchImageLibraryAsync({
               mediaTypes: ['images'],
               quality: 0.75,
+              allowsMultipleSelection: true,
+              selectionLimit: 10,
             });
-            if (!result.canceled && result.assets[0]) {
-              try {
-                await uploadPhoto.mutateAsync({
-                  articleId,
-                  uri: result.assets[0].uri,
-                  mimeType: result.assets[0].mimeType,
-                });
-              } catch (e) {
-                setError(e instanceof Error ? e.message : 'upload impossible');
-              }
+            if (!result.canceled && result.assets.length > 0) {
+              await uploadImageAssets(result.assets);
             }
           })();
         },
@@ -110,20 +134,27 @@ export default function AideArticleScreen() {
               exif: false,
             });
             if (!result.canceled && result.assets[0]) {
-              try {
-                await uploadPhoto.mutateAsync({
-                  articleId,
-                  uri: result.assets[0].uri,
-                  mimeType: result.assets[0].mimeType,
-                });
-              } catch (e) {
-                setError(e instanceof Error ? e.message : 'upload impossible');
-              }
+              await uploadImageAssets([result.assets[0]]);
             }
           })();
         },
       },
       { text: 'Annuler', style: 'cancel' },
+    ]);
+  };
+
+  const onDeletePhoto = (ph: HelpPhoto) => {
+    Alert.alert('Retirer cette image ?', undefined, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Retirer',
+        style: 'destructive',
+        onPress: () => {
+          void deletePhoto.mutateAsync(ph.id).catch((e) => {
+            setError(e instanceof Error ? e.message : 'suppression impossible');
+          });
+        },
+      },
     ]);
   };
 
@@ -241,7 +272,8 @@ export default function AideArticleScreen() {
     );
   }
 
-  const documents = article.data.documents ?? [];
+      const documents = article.data.documents ?? [];
+  const photos = article.data.photos ?? [];
 
   return (
     <ScrollView
@@ -304,16 +336,50 @@ export default function AideArticleScreen() {
         </>
       )}
 
-      {(article.data.photos ?? []).map((ph) => (
-        <AuthedImage
-          key={ph.id}
-          url={helpPhotoUrl(ph.id)}
-          cacheKey={`help-${ph.id}`}
-          style={styles.photo}
-        />
-      ))}
+      {(photos.length > 0 || !editing) && (
+        <View style={{ marginBottom: 12, gap: 8 }}>
+          <Text
+            variant="titleSmall"
+            style={{ color: theme.colors.onBackground, fontWeight: '700' }}
+          >
+            Images
+          </Text>
+          {photos.map((ph) => (
+            <View key={ph.id} style={{ marginBottom: 4 }}>
+              <AuthedImage
+                url={helpPhotoUrl(ph.id)}
+                cacheKey={`help-${ph.id}`}
+                style={styles.photo}
+              />
+              {!editing ? (
+                <Button
+                  mode="text"
+                  textColor={theme.colors.error}
+                  compact
+                  onPress={() => onDeletePhoto(ph)}
+                  disabled={deletePhoto.isPending}
+                  style={{ alignSelf: 'flex-start', marginTop: -4 }}
+                >
+                  Retirer
+                </Button>
+              ) : null}
+            </View>
+          ))}
+          {!editing ? (
+            <Button
+              mode="outlined"
+              icon="image-plus"
+              onPress={onAddImage}
+              loading={uploadingImages}
+              disabled={uploadingImages}
+            >
+              Ajouter des images
+            </Button>
+          ) : null}
+        </View>
+      )}
 
-      {documents.length > 0 ? (
+      {(documents.length > 0 || !editing) && (
         <View style={{ marginBottom: 12, gap: 8 }}>
           <Text
             variant="titleSmall"
@@ -357,28 +423,27 @@ export default function AideArticleScreen() {
               </Button>
             </View>
           ))}
+          {!editing ? (
+            <Button
+              mode="outlined"
+              icon="file-document-outline"
+              onPress={onAddDocument}
+              loading={uploadDocument.isPending}
+              disabled={uploadDocument.isPending}
+            >
+              Ajouter un document
+            </Button>
+          ) : null}
         </View>
-      ) : null}
+      )}
 
       {!editing ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
           <Button mode="contained-tonal" icon="pencil" onPress={() => setEditing(true)}>
             Modifier
           </Button>
-          <Button mode="outlined" icon="image-plus" onPress={onAddPhoto}>
-            Photo
-          </Button>
-          <Button
-            mode="outlined"
-            icon="file-document-outline"
-            onPress={onAddDocument}
-            loading={uploadDocument.isPending}
-            disabled={uploadDocument.isPending}
-          >
-            Document
-          </Button>
           <Button mode="text" textColor={theme.colors.error} onPress={onDelete}>
-            Supprimer
+            Supprimer la fiche
           </Button>
         </View>
       ) : null}

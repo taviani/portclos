@@ -99,6 +99,19 @@ export async function uploadHelpPhoto(
   return uploadPhotoMultipart(accessToken, `/help/${articleId}/photos`, uri, mimeType);
 }
 
+export async function deleteHelpPhoto(
+  accessToken: string,
+  photoId: string,
+): Promise<void> {
+  const res = await fetch(`${apiBaseUrl()}/help-photos/${photoId}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+}
+
 export async function uploadHelpDocument(
   accessToken: string,
   articleId: string,

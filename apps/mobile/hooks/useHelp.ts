@@ -4,6 +4,7 @@ import {
   createHelpArticle,
   deleteHelpArticle,
   deleteHelpDocument,
+  deleteHelpPhoto,
   fetchHelpArticle,
   fetchHelpArticles,
   updateHelpArticle,
@@ -104,6 +105,25 @@ export function useUploadHelpPhoto(houseId: string | undefined) {
     },
     onSuccess: async (_ph, input) => {
       await qc.invalidateQueries({ queryKey: queryKeys.helpArticle(input.articleId) });
+      if (houseId) {
+        await qc.invalidateQueries({ queryKey: queryKeys.helpArticles(houseId) });
+      }
+    },
+  });
+}
+
+export function useDeleteHelpPhoto(houseId: string | undefined, articleId: string | undefined) {
+  const { token } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (photoId: string) => {
+      if (!token) throw new Error('unauthorized');
+      return deleteHelpPhoto(token, photoId);
+    },
+    onSuccess: async () => {
+      if (articleId) {
+        await qc.invalidateQueries({ queryKey: queryKeys.helpArticle(articleId) });
+      }
       if (houseId) {
         await qc.invalidateQueries({ queryKey: queryKeys.helpArticles(houseId) });
       }

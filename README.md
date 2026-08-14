@@ -59,7 +59,7 @@ go run ./cmd/server
 - `GET /houses/{id}/members` — house roster (display names)
 - `GET|POST /houses/{id}/posts` · `GET|DELETE /posts/{id}` — house blog (`tags`, `mentions` on create)
 - `POST /posts/{id}/photos` · `GET /blog-photos/{id}` · `POST /posts/{id}/comments` · `PUT|DELETE /posts/{id}/reactions`
-- `GET|POST /houses/{id}/help` · `GET|PATCH|DELETE /help/{id}` · `POST /help/{id}/photos` · `GET /help-photos/{id}` · `POST /help/{id}/documents` · `GET|DELETE /help-documents/{id}`
+- `GET|POST /houses/{id}/help` · `GET|PATCH|DELETE /help/{id}` · `POST /help/{id}/photos` · `GET|DELETE /help-photos/{id}` · `POST /help/{id}/documents` · `GET|DELETE /help-documents/{id}`
 - `GET|POST /houses/{id}/closing-checklist/items` — template (`label`, `description?`, `optional`) + hint photos
 - `PATCH|DELETE /closing-checklist/items/{itemId}` — update `label` / `description` / `optional`
 - `POST /closing-checklist/items/{itemId}/photos` — indication photo (multipart `photo`) · `GET|DELETE /closing-photos/{id}`
