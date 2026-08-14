@@ -17,7 +17,7 @@
     "preview": {
       "android": {
         "track": "internal",
-        "releaseStatus": "draft"
+        "releaseStatus": "completed"
       }
     },
     "production": {
