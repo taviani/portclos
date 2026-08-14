@@ -1,7 +1,8 @@
-import { useLayoutEffect } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { type Href, router, useNavigation } from 'expo-router';
-import { Button, Text, ActivityIndicator } from 'react-native-paper';
+import * as Clipboard from 'expo-clipboard';
+import { Button, IconButton, Text, ActivityIndicator } from 'react-native-paper';
 
 import { BeaconBar } from '@/components/brand/BeaconRail';
 import { LighthouseMark } from '@/components/LighthouseMark';
@@ -13,6 +14,7 @@ export default function MaisonHubScreen() {
   const theme = useAppTheme();
   const navigation = useNavigation();
   const { house, isLoading, error } = useCurrentHouse();
+  const [copied, setCopied] = useState(false);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -58,6 +60,15 @@ export default function MaisonHubScreen() {
 
   const address = house.address?.trim() ?? '';
 
+  const copyAddress = () => {
+    if (!address) return;
+    void (async () => {
+      await Clipboard.setStringAsync(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    })();
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={styles.hero}>
@@ -73,16 +84,26 @@ export default function MaisonHubScreen() {
             {house.name}
           </Text>
           {address ? (
-            <Text
-              variant="bodyLarge"
-              style={{
-                color: theme.colors.onSurfaceVariant,
-                marginTop: 8,
-                lineHeight: 22,
-              }}
-            >
-              {address}
-            </Text>
+            <View style={styles.addressRow}>
+              <Text
+                variant="bodyLarge"
+                style={{
+                  color: theme.colors.onSurfaceVariant,
+                  lineHeight: 22,
+                  flex: 1,
+                }}
+              >
+                {address}
+              </Text>
+              <IconButton
+                icon={copied ? 'check' : 'content-copy'}
+                size={18}
+                iconColor={copied ? theme.colors.primary : theme.colors.onSurfaceVariant}
+                accessibilityLabel={copied ? 'Adresse copiée' : 'Copier l’adresse'}
+                onPress={copyAddress}
+                style={styles.copyBtn}
+              />
+            </View>
           ) : house.role === 'owner' ? (
             <Text
               variant="bodyMedium"
@@ -130,6 +151,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     marginBottom: 18,
     gap: 8,
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 8,
+    gap: 0,
+  },
+  copyBtn: {
+    margin: 0,
+    marginTop: -6,
   },
   center: {
     flex: 1,
