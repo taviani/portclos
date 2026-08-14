@@ -115,7 +115,7 @@ Never put hostnames, paths, or passwords in the repository.
 
 Workflow: [`.github/workflows/mobile.yml`](.github/workflows/mobile.yml) — **manual only** (`Actions → Mobile → Run workflow`). No EAS build on push to `main` (saves free-plan quota; prefer local simulator: `cd apps/mobile && npx expo start --ios`).
 
-Optional: set **submit = true** to auto-submit iOS to TestFlight after the build. Android/Play stays paused until a physical device + Play service account.
+Optional: set **submit = true** to auto-submit iOS to TestFlight after the build. Android internal track uses `releaseStatus: completed` in `eas.json` so submits are rolled out to testers (not left as Play Console drafts).
 
 ### One-time Expo / store setup
 
