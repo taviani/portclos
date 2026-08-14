@@ -52,7 +52,8 @@
           "cameraPermission": "Portclos utilise la caméra pour les photos de fermeture de maison.",
           "photosPermission": "Portclos utilise la photothèque pour les photos de fermeture de maison."
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

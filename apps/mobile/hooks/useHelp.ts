@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createHelpArticle,
   deleteHelpArticle,
+  deleteHelpDocument,
   fetchHelpArticle,
   fetchHelpArticles,
   updateHelpArticle,
+  uploadHelpDocument,
   uploadHelpPhoto,
 } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
@@ -102,6 +104,53 @@ export function useUploadHelpPhoto(houseId: string | undefined) {
     },
     onSuccess: async (_ph, input) => {
       await qc.invalidateQueries({ queryKey: queryKeys.helpArticle(input.articleId) });
+      if (houseId) {
+        await qc.invalidateQueries({ queryKey: queryKeys.helpArticles(houseId) });
+      }
+    },
+  });
+}
+
+export function useUploadHelpDocument(houseId: string | undefined) {
+  const { token } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      articleId: string;
+      uri: string;
+      mimeType?: string | null;
+      fileName?: string | null;
+    }) => {
+      if (!token) throw new Error('unauthorized');
+      return uploadHelpDocument(
+        token,
+        input.articleId,
+        input.uri,
+        input.mimeType,
+        input.fileName,
+      );
+    },
+    onSuccess: async (_doc, input) => {
+      await qc.invalidateQueries({ queryKey: queryKeys.helpArticle(input.articleId) });
+      if (houseId) {
+        await qc.invalidateQueries({ queryKey: queryKeys.helpArticles(houseId) });
+      }
+    },
+  });
+}
+
+export function useDeleteHelpDocument(houseId: string | undefined, articleId: string | undefined) {
+  const { token } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (documentId: string) => {
+      if (!token) throw new Error('unauthorized');
+      return deleteHelpDocument(token, documentId);
+    },
+    onSuccess: async () => {
+      if (articleId) {
+        await qc.invalidateQueries({ queryKey: queryKeys.helpArticle(articleId) });
+      }
       if (houseId) {
         await qc.invalidateQueries({ queryKey: queryKeys.helpArticles(houseId) });
       }

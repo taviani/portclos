@@ -70,6 +70,18 @@ func ExtForContentType(contentType string) string {
 		return ".webp"
 	case "image/heic":
 		return ".heic"
+	case "application/pdf":
+		return ".pdf"
+	case "text/plain":
+		return ".txt"
+	case "application/msword":
+		return ".doc"
+	case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+		return ".docx"
+	case "application/vnd.ms-excel":
+		return ".xls"
+	case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+		return ".xlsx"
 	default:
 		return ".bin"
 	}

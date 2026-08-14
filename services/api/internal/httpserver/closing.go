@@ -17,6 +17,7 @@ import (
 )
 
 const maxPhotoBytes = 8 << 20
+const maxDocumentBytes = 20 << 20
 
 func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 	pr.Get("/houses/{id}/closing-checklist/items", func(w http.ResponseWriter, r *http.Request) {
