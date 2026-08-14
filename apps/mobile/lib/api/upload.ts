@@ -7,25 +7,35 @@ import {
   tryRefreshAccessToken,
 } from '@/lib/api/http';
 
+type MultipartOpts = {
+  fieldName?: string;
+  mimeType?: string | null;
+  parameters?: Record<string, string>;
+};
+
 /**
- * Multipart photo upload via expo-file-system File.upload.
+ * Multipart upload via expo-file-system File.upload.
  * Avoids RN FormData `{ uri, name, type }` which throws
  * "Unsupported FormDataPart implementation" under Expo's fetch.
  */
-export async function uploadPhotoMultipart<T>(
+export async function uploadMultipart<T>(
   accessToken: string,
   path: string,
   uri: string,
-  mimeType?: string | null,
+  opts?: MultipartOpts,
 ): Promise<T> {
+  const fieldName = opts?.fieldName || 'photo';
+  const mimeType = opts?.mimeType || 'application/octet-stream';
+
   const uploadOnce = async (token: string) => {
     const file = new File(uri);
     return file.upload(`${apiBaseUrl()}${path}`, {
       httpMethod: 'POST',
       uploadType: UploadType.MULTIPART,
-      fieldName: 'photo',
-      mimeType: mimeType || 'image/jpeg',
+      fieldName,
+      mimeType,
       headers: authHeaders(token) as Record<string, string>,
+      ...(opts?.parameters ? { parameters: opts.parameters } : {}),
     });
   };
 
@@ -51,4 +61,32 @@ export async function uploadPhotoMultipart<T>(
     throw new Error(detail);
   }
   return JSON.parse(result.body) as T;
+}
+
+export async function uploadPhotoMultipart<T>(
+  accessToken: string,
+  path: string,
+  uri: string,
+  mimeType?: string | null,
+): Promise<T> {
+  return uploadMultipart(accessToken, path, uri, {
+    fieldName: 'photo',
+    mimeType: mimeType || 'image/jpeg',
+  });
+}
+
+export async function uploadFileMultipart<T>(
+  accessToken: string,
+  path: string,
+  uri: string,
+  mimeType?: string | null,
+  fileName?: string | null,
+): Promise<T> {
+  return uploadMultipart(accessToken, path, uri, {
+    fieldName: 'file',
+    mimeType: mimeType || 'application/octet-stream',
+    ...(fileName
+      ? { parameters: { original_filename: fileName } }
+      : {}),
+  });
 }

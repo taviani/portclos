@@ -535,6 +535,108 @@ func mountCommunityRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		w.Header().Set("Content-Type", meta.ContentType)
 		http.ServeContent(w, r, meta.ID, meta.CreatedAt, f)
 	})
+
+	pr.Delete("/help-photos/{photoId}", func(w http.ResponseWriter, r *http.Request) {
+		user, ok := auth.UserFromContext(r.Context())
+		if !ok {
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
+			return
+		}
+		meta, err := db.GetHelpPhotoFile(r.Context(), chi.URLParam(r, "photoId"))
+		if err != nil {
+			writeStoreErr(w, r, err)
+			return
+		}
+		if _, err := db.GetHouseForMember(r.Context(), meta.HouseID, user.Subject); err != nil {
+			writeStoreErr(w, r, err)
+			return
+		}
+		removed, err := db.DeleteHelpPhoto(r.Context(), meta.ID)
+		if err != nil {
+			writeStoreErr(w, r, err)
+			return
+		}
+		_ = files.Remove(removed.StorageKey)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	pr.Post("/help/{articleId}/documents", func(w http.ResponseWriter, r *http.Request) {
+		user, ok := requireHelpMember(w, r, db)
+		if !ok {
+			return
+		}
+		filename, contentType, buf, okUpload := readDocumentUpload(w, r)
+		if !okUpload {
+			return
+		}
+		docID := uuid.NewString()
+		key := "help/docs/" + docID + media.ExtForContentType(contentType)
+		if err := files.Save(key, bytes.NewReader(buf)); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "upload_storage_failed", err)
+			return
+		}
+		doc, err := db.AddHelpDocument(r.Context(), chi.URLParam(r, "articleId"), user.Subject, key, contentType, filename)
+		if err != nil {
+			_ = files.Remove(key)
+			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, doc)
+	})
+
+	pr.Get("/help-documents/{documentId}", func(w http.ResponseWriter, r *http.Request) {
+		user, ok := auth.UserFromContext(r.Context())
+		if !ok {
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
+			return
+		}
+		meta, err := db.GetHelpDocumentFile(r.Context(), chi.URLParam(r, "documentId"))
+		if err != nil {
+			writeStoreErr(w, r, err)
+			return
+		}
+		if _, err := db.GetHouseForMember(r.Context(), meta.HouseID, user.Subject); err != nil {
+			writeStoreErr(w, r, err)
+			return
+		}
+		f, err := files.Open(meta.StorageKey)
+		if err != nil {
+			writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
+			return
+		}
+		defer f.Close()
+		name := meta.OriginalFilename
+		if name == "" {
+			name = meta.ID + media.ExtForContentType(meta.ContentType)
+		}
+		w.Header().Set("Content-Type", meta.ContentType)
+		w.Header().Set("Content-Disposition", "inline; filename=\""+sanitizeContentDispositionFilename(name)+"\"")
+		http.ServeContent(w, r, name, meta.CreatedAt, f)
+	})
+
+	pr.Delete("/help-documents/{documentId}", func(w http.ResponseWriter, r *http.Request) {
+		user, ok := auth.UserFromContext(r.Context())
+		if !ok {
+			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
+			return
+		}
+		meta, err := db.GetHelpDocumentFile(r.Context(), chi.URLParam(r, "documentId"))
+		if err != nil {
+			writeStoreErr(w, r, err)
+			return
+		}
+		if _, err := db.GetHouseForMember(r.Context(), meta.HouseID, user.Subject); err != nil {
+			writeStoreErr(w, r, err)
+			return
+		}
+		removed, err := db.DeleteHelpDocument(r.Context(), meta.ID)
+		if err != nil {
+			writeStoreErr(w, r, err)
+			return
+		}
+		_ = files.Remove(removed.StorageKey)
+		w.WriteHeader(http.StatusNoContent)
+	})
 }
 
 func requireBlogMember(w http.ResponseWriter, r *http.Request, db *store.Store) (auth.User, bool) {
@@ -603,4 +705,79 @@ func readImageUpload(w http.ResponseWriter, r *http.Request) (filename, contentT
 		return "", "", nil, false
 	}
 	return header.Filename, contentType, buf, true
+}
+
+var allowedHelpDocumentTypes = map[string]bool{
+	"application/pdf": true,
+	"text/plain":      true,
+	"application/msword": true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+	"application/vnd.ms-excel": true,
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": true,
+}
+
+func readDocumentUpload(w http.ResponseWriter, r *http.Request) (filename, contentType string, buf []byte, ok bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxDocumentBytes+1024)
+	if err := r.ParseMultipartForm(maxDocumentBytes); err != nil {
+		http.Error(w, `{"error":"invalid_multipart"}`, http.StatusBadRequest)
+		return "", "", nil, false
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, `{"error":"file_required"}`, http.StatusBadRequest)
+		return "", "", nil, false
+	}
+	defer file.Close()
+	contentType = strings.ToLower(strings.TrimSpace(header.Header.Get("Content-Type")))
+	if contentType == "" || contentType == "application/octet-stream" {
+		// Infer from filename when the client sends a generic type.
+		lower := strings.ToLower(header.Filename)
+		switch {
+		case strings.HasSuffix(lower, ".pdf"):
+			contentType = "application/pdf"
+		case strings.HasSuffix(lower, ".txt"):
+			contentType = "text/plain"
+		case strings.HasSuffix(lower, ".doc"):
+			contentType = "application/msword"
+		case strings.HasSuffix(lower, ".docx"):
+			contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+		case strings.HasSuffix(lower, ".xls"):
+			contentType = "application/vnd.ms-excel"
+		case strings.HasSuffix(lower, ".xlsx"):
+			contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+		default:
+			contentType = "application/octet-stream"
+		}
+	}
+	if !allowedHelpDocumentTypes[contentType] {
+		http.Error(w, `{"error":"invalid_content_type"}`, http.StatusBadRequest)
+		return "", "", nil, false
+	}
+	buf, err = io.ReadAll(io.LimitReader(file, maxDocumentBytes+1))
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
+		return "", "", nil, false
+	}
+	if len(buf) > maxDocumentBytes {
+		http.Error(w, `{"error":"file_too_large"}`, http.StatusRequestEntityTooLarge)
+		return "", "", nil, false
+	}
+	name := strings.TrimSpace(header.Filename)
+	if extra := strings.TrimSpace(r.FormValue("original_filename")); extra != "" {
+		name = extra
+	}
+	if name == "" {
+		name = "document" + media.ExtForContentType(contentType)
+	}
+	return name, contentType, buf, true
+}
+
+func sanitizeContentDispositionFilename(name string) string {
+	name = strings.ReplaceAll(name, `"`, "")
+	name = strings.ReplaceAll(name, "\n", "")
+	name = strings.ReplaceAll(name, "\r", "")
+	if name == "" {
+		return "document"
+	}
+	return name
 }

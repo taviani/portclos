@@ -1,10 +1,18 @@
 import { apiBaseUrl, authHeaders, getJSON } from '@/lib/api/http';
-import { uploadPhotoMultipart } from '@/lib/api/upload';
+import { uploadFileMultipart, uploadPhotoMultipart } from '@/lib/api/upload';
 
 export type HelpPhoto = {
   id: string;
   article_id: string;
   content_type: string;
+  created_at: string;
+};
+
+export type HelpDocument = {
+  id: string;
+  article_id: string;
+  content_type: string;
+  original_filename: string;
   created_at: string;
 };
 
@@ -18,6 +26,7 @@ export type HelpArticle = {
   created_at: string;
   updated_at: string;
   photos: HelpPhoto[];
+  documents: HelpDocument[];
 };
 
 export async function fetchHelpArticles(
@@ -90,6 +99,52 @@ export async function uploadHelpPhoto(
   return uploadPhotoMultipart(accessToken, `/help/${articleId}/photos`, uri, mimeType);
 }
 
+export async function deleteHelpPhoto(
+  accessToken: string,
+  photoId: string,
+): Promise<void> {
+  const res = await fetch(`${apiBaseUrl()}/help-photos/${photoId}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+}
+
+export async function uploadHelpDocument(
+  accessToken: string,
+  articleId: string,
+  uri: string,
+  mimeType?: string | null,
+  fileName?: string | null,
+): Promise<HelpDocument> {
+  return uploadFileMultipart(
+    accessToken,
+    `/help/${articleId}/documents`,
+    uri,
+    mimeType,
+    fileName,
+  );
+}
+
+export async function deleteHelpDocument(
+  accessToken: string,
+  documentId: string,
+): Promise<void> {
+  const res = await fetch(`${apiBaseUrl()}/help-documents/${documentId}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+}
+
 export function helpPhotoUrl(photoId: string): string {
   return `${apiBaseUrl()}/help-photos/${photoId}`;
+}
+
+export function helpDocumentUrl(documentId: string): string {
+  return `${apiBaseUrl()}/help-documents/${documentId}`;
 }

@@ -15,16 +15,25 @@ type HelpPhoto struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type HelpDocument struct {
+	ID               string    `json:"id"`
+	ArticleID        string    `json:"article_id"`
+	ContentType      string    `json:"content_type"`
+	OriginalFilename string    `json:"original_filename"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
 type HelpArticle struct {
-	ID         string      `json:"id"`
-	HouseID    string      `json:"house_id"`
-	Title      string      `json:"title"`
-	Body       string      `json:"body"`
-	SortOrder  int         `json:"sort_order"`
-	CreatedBy  string      `json:"created_by"`
-	CreatedAt  time.Time   `json:"created_at"`
-	UpdatedAt  time.Time   `json:"updated_at"`
-	Photos     []HelpPhoto `json:"photos"`
+	ID         string         `json:"id"`
+	HouseID    string         `json:"house_id"`
+	Title      string         `json:"title"`
+	Body       string         `json:"body"`
+	SortOrder  int            `json:"sort_order"`
+	CreatedBy  string         `json:"created_by"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	Photos     []HelpPhoto    `json:"photos"`
+	Documents  []HelpDocument `json:"documents"`
 }
 
 type HelpPhotoFile struct {
@@ -33,6 +42,15 @@ type HelpPhotoFile struct {
 	StorageKey  string
 	ContentType string
 	CreatedAt   time.Time
+}
+
+type HelpDocumentFile struct {
+	ID               string
+	HouseID          string
+	StorageKey       string
+	ContentType      string
+	OriginalFilename string
+	CreatedAt        time.Time
 }
 
 func (s *Store) migrateHelp(ctx context.Context) error {
@@ -54,6 +72,16 @@ CREATE TABLE IF NOT EXISTS help_article_photos (
   article_id UUID NOT NULL REFERENCES help_articles (id) ON DELETE CASCADE,
   storage_key TEXT NOT NULL,
   content_type TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS help_article_documents (
+  id UUID PRIMARY KEY,
+  article_id UUID NOT NULL REFERENCES help_articles (id) ON DELETE CASCADE,
+  storage_key TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  original_filename TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -115,6 +143,7 @@ ORDER BY sort_order ASC, title ASC`, houseID)
 			return nil, err
 		}
 		a.Photos = []HelpPhoto{}
+		a.Documents = []HelpDocument{}
 		out = append(out, a)
 		ids = append(ids, a.ID)
 	}
@@ -125,9 +154,16 @@ ORDER BY sort_order ASC, title ASC`, houseID)
 	if err != nil {
 		return nil, err
 	}
+	docs, err := s.loadHelpDocuments(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	for i := range out {
 		if ph, ok := photos[out[i].ID]; ok {
 			out[i].Photos = ph
+		}
+		if d, ok := docs[out[i].ID]; ok {
+			out[i].Documents = d
 		}
 	}
 	return out, rows.Err()
@@ -143,6 +179,7 @@ RETURNING id::text, house_id::text, title, body, sort_order, created_by, created
 		id, houseID, title, body, sortOrder, createdBy,
 	).Scan(&a.ID, &a.HouseID, &a.Title, &a.Body, &a.SortOrder, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt)
 	a.Photos = []HelpPhoto{}
+	a.Documents = []HelpDocument{}
 	return a, err
 }
 
@@ -175,6 +212,14 @@ FROM help_articles WHERE id = $1`, articleID,
 	a.Photos = photos[a.ID]
 	if a.Photos == nil {
 		a.Photos = []HelpPhoto{}
+	}
+	docs, err := s.loadHelpDocuments(ctx, []string{a.ID})
+	if err != nil {
+		return HelpArticle{}, err
+	}
+	a.Documents = docs[a.ID]
+	if a.Documents == nil {
+		a.Documents = []HelpDocument{}
 	}
 	return a, nil
 }
@@ -256,5 +301,60 @@ func (s *Store) DeleteHelpPhoto(ctx context.Context, photoID string) (HelpPhotoF
 		return HelpPhotoFile{}, err
 	}
 	_, err = s.pool.Exec(ctx, `DELETE FROM help_article_photos WHERE id = $1`, photoID)
+	return f, err
+}
+
+func (s *Store) loadHelpDocuments(ctx context.Context, ids []string) (map[string][]HelpDocument, error) {
+	out := map[string][]HelpDocument{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+SELECT id::text, article_id::text, content_type, original_filename, created_at
+FROM help_article_documents WHERE article_id = ANY($1::uuid[])
+ORDER BY created_at ASC`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var d HelpDocument
+		if err := rows.Scan(&d.ID, &d.ArticleID, &d.ContentType, &d.OriginalFilename, &d.CreatedAt); err != nil {
+			return nil, err
+		}
+		out[d.ArticleID] = append(out[d.ArticleID], d)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) AddHelpDocument(ctx context.Context, articleID, userSub, key, contentType, originalFilename string) (HelpDocument, error) {
+	id := uuid.NewString()
+	var d HelpDocument
+	err := s.pool.QueryRow(ctx, `
+INSERT INTO help_article_documents (id, article_id, storage_key, content_type, original_filename, created_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id::text, article_id::text, content_type, original_filename, created_at`,
+		id, articleID, key, contentType, originalFilename, userSub,
+	).Scan(&d.ID, &d.ArticleID, &d.ContentType, &d.OriginalFilename, &d.CreatedAt)
+	return d, err
+}
+
+func (s *Store) GetHelpDocumentFile(ctx context.Context, documentID string) (HelpDocumentFile, error) {
+	var f HelpDocumentFile
+	err := s.pool.QueryRow(ctx, `
+SELECT d.id::text, a.house_id::text, d.storage_key, d.content_type, d.original_filename, d.created_at
+FROM help_article_documents d
+JOIN help_articles a ON a.id = d.article_id
+WHERE d.id = $1`, documentID,
+	).Scan(&f.ID, &f.HouseID, &f.StorageKey, &f.ContentType, &f.OriginalFilename, &f.CreatedAt)
+	return f, err
+}
+
+func (s *Store) DeleteHelpDocument(ctx context.Context, documentID string) (HelpDocumentFile, error) {
+	f, err := s.GetHelpDocumentFile(ctx, documentID)
+	if err != nil {
+		return HelpDocumentFile{}, err
+	}
+	_, err = s.pool.Exec(ctx, `DELETE FROM help_article_documents WHERE id = $1`, documentID)
 	return f, err
 }
