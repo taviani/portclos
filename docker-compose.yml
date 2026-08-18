@@ -14,7 +14,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-portclos} -d ${POSTGRES_DB:-portclos}"]
       interval: 2s
       timeout: 5s
-      retries: 10
+      retries: 15
+      start_period: 10s
 
   api:
     build:

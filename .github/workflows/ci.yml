@@ -88,6 +88,16 @@ jobs:
           pg_pid=$!
           (cd services/api && go build -mod=readonly -o /tmp/portclos-api ./cmd/server)
           wait "$pg_pid"
+          # compose --wait can return while Postgres still rejects with 57P03.
+          for i in $(seq 1 30); do
+            if docker compose exec -T db \
+              psql -U "${POSTGRES_USER:-portclos}" -d "${POSTGRES_DB:-portclos}" -c 'SELECT 1' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker compose exec -T db \
+            psql -U "${POSTGRES_USER:-portclos}" -d "${POSTGRES_DB:-portclos}" -c 'SELECT 1'
 
       - name: Run API
         run: |
@@ -96,8 +106,20 @@ jobs:
           source .env
           set +a
           mkdir -p data/uploads
-          /tmp/portclos-api > /tmp/portclos-api.log 2>&1 &
-          echo $! > /tmp/portclos-api.pid
+          # Retry boot: first connect can still race Postgres "starting up".
+          for i in $(seq 1 10); do
+            : > /tmp/portclos-api.log
+            /tmp/portclos-api >> /tmp/portclos-api.log 2>&1 &
+            echo $! > /tmp/portclos-api.pid
+            sleep 1
+            if kill -0 "$(cat /tmp/portclos-api.pid)" 2>/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API failed to stay up" >&2
+          cat /tmp/portclos-api.log >&2
+          exit 1
 
       - name: Smoke test /health and houses
         run: |
