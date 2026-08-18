@@ -5,8 +5,12 @@ on:
   # Local dev: apps/mobile → npx expo start --ios (simulator).
   workflow_dispatch:
     inputs:
-      submit:
-        description: "After build, auto-submit iOS to TestFlight (Play submit needs a Google service account on EAS — skipped until then)"
+      submit_ios:
+        description: "iOS: build preview + submit to TestFlight (needs secret EXPO_ASC_APP_ID)"
+        type: boolean
+        default: false
+      submit_android:
+        description: "Android: build preview + submit to Play internal (Google Play service account must already be on EAS)"
         type: boolean
         default: false
 
@@ -87,7 +91,7 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: EAS build iOS (optional TestFlight auto-submit)
+      - name: EAS build (optional store submit)
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
@@ -96,20 +100,47 @@ jobs:
           EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
           EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
           EXPO_ASC_APP_ID: ${{ secrets.EXPO_ASC_APP_ID }}
-          WANT_SUBMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.submit || false }}
+          SUBMIT_IOS: ${{ github.event_name == 'workflow_dispatch' && inputs.submit_ios || false }}
+          SUBMIT_ANDROID: ${{ github.event_name == 'workflow_dispatch' && inputs.submit_android || false }}
         run: |
           set -euo pipefail
-          # Android / Play builds paused until a physical device + Play service account are ready.
-          # Re-enable: eas build --platform android --profile preview --non-interactive --no-wait
-          ios_args=(build --platform ios --profile preview --non-interactive --no-wait)
-          if [ "${WANT_SUBMIT}" = "true" ]; then
-            if [ -z "${EXPO_ASC_APP_ID:-}" ]; then
-              echo "::error::submit=true requires secret EXPO_ASC_APP_ID"
-              exit 1
-            fi
-            echo "Building iOS with TestFlight auto-submit."
-            ios_args+=(--auto-submit)
-          else
-            echo "Building iOS (build only)."
+          # Default: iOS build only (no submit). Android is opt-in via submit_android
+          # so we do not burn Play quota accidentally.
+          do_ios=true
+          do_android=false
+          if [ "${SUBMIT_ANDROID}" = "true" ] && [ "${SUBMIT_IOS}" != "true" ]; then
+            do_ios=false
           fi
-          eas "${ios_args[@]}"
+          if [ "${SUBMIT_ANDROID}" = "true" ]; then
+            do_android=true
+          fi
+
+          eas_build() {
+            local platform="$1"
+            local submit="$2"
+            local args=(build --platform "$platform" --profile preview --non-interactive --no-wait)
+            if [ "$submit" = "true" ]; then
+              args+=(--auto-submit)
+            fi
+            echo "eas ${args[*]}"
+            eas "${args[@]}"
+          }
+
+          if [ "$do_ios" = "true" ]; then
+            if [ "${SUBMIT_IOS}" = "true" ]; then
+              if [ -z "${EXPO_ASC_APP_ID:-}" ]; then
+                echo "::error::submit_ios requires secret EXPO_ASC_APP_ID"
+                exit 1
+              fi
+              echo "Building iOS with TestFlight auto-submit."
+              eas_build ios true
+            else
+              echo "Building iOS (build only)."
+              eas_build ios false
+            fi
+          fi
+
+          if [ "$do_android" = "true" ]; then
+            echo "Building Android with Play internal auto-submit."
+            eas_build android true
+          fi
