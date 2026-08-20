@@ -1,0 +1,1796 @@
+From 97c30a9543eb10e9b003b51fb425d84ca762570a Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Thu, 20 Aug 2026 09:43:36 +0000
+Subject: [PATCH] Harden the issuer: ticketed registration, quieter admin,
+ login rate limits.
+
+Public self-registration now requires a one-time ticket minted by a
+confidential OAuth client with client_secret. Invite-only apps are
+unchanged. GET / is 404, /admin is 404 unless the session is admin,
+and leftover accounts can be deleted from the admin user list.
+---
+ .env.example                                  |   6 +-
+ README.md                                     |  28 +-
+ cmd/server/main.go                            |  12 +-
+ internal/adapter/http/handler/admin.go        |  22 ++
+ internal/adapter/http/handler/admin_auth.go   |  10 +-
+ internal/adapter/http/handler/login.go        |  29 +-
+ internal/adapter/http/handler/oidc.go         |  10 +-
+ internal/adapter/http/handler/register.go     |  79 ++++-
+ internal/adapter/http/render/render.go        |   1 +
+ internal/adapter/http/render/render_test.go   |  24 +-
+ .../http/render/templates/admin_users.html    |   7 +
+ .../adapter/http/render/templates/home.html   |  62 ----
+ .../adapter/http/render/templates/login.html  |   3 +-
+ .../http/render/templates/register.html       |   2 +
+ .../http/render/templates/verify_result.html  |   1 -
+ .../http/render/templates/verify_sent.html    |   1 -
+ internal/adapter/http/response/json.go        |   9 +-
+ internal/adapter/http/server.go               |   3 +-
+ .../postgres/registration_ticket_repo.go      |  77 +++++
+ internal/adapter/postgres/user_admin_repo.go  |  16 +
+ internal/domain/errors.go                     |  30 +-
+ internal/domain/token.go                      |   7 +
+ internal/platform/config/config.go            |  51 +--
+ internal/platform/ratelimit/limiter.go        |  84 +++++
+ internal/platform/ratelimit/limiter_test.go   |  30 ++
+ internal/port/admin.go                        |   2 +
+ internal/port/registration_ticket.go          |  14 +
+ internal/usecase/admin.go                     |  22 +-
+ internal/usecase/login.go                     |  13 +-
+ internal/usecase/register.go                  | 149 ++++++++-
+ internal/usecase/register_test.go             | 312 ++++++++++++++++++
+ migrations/000006_registration_tickets.sql    |  14 +
+ 32 files changed, 945 insertions(+), 185 deletions(-)
+ delete mode 100644 internal/adapter/http/render/templates/home.html
+ create mode 100644 internal/adapter/postgres/registration_ticket_repo.go
+ create mode 100644 internal/platform/ratelimit/limiter.go
+ create mode 100644 internal/platform/ratelimit/limiter_test.go
+ create mode 100644 internal/port/registration_ticket.go
+ create mode 100644 internal/usecase/register_test.go
+ create mode 100644 migrations/000006_registration_tickets.sql
+
+diff --git a/.env.example b/.env.example
+index 3b40773..c185c74 100644
+--- a/.env.example
++++ b/.env.example
+@@ -13,7 +13,8 @@ POSTGRES_DB=kde_auth
+ # Local dev only — go run on host connects via published port 5433.
+ DATABASE_URL=postgres://kde_auth:kde_auth@localhost:5433/kde_auth?sslmode=disable
+ 
+-# Registration
++# Registration — kill switch for /register tickets (invite flow ignores this).
++# Open registration still requires POST /register/ticket with a confidential client_secret.
+ REGISTRATION_OPEN=true
+ 
+ # JWT — dev: leave empty (auto-generated on localhost).
+@@ -37,6 +38,7 @@ SMTP_USER=
+ SMTP_PASSWORD=
+ SMTP_FROM=
+ 
+-# Turnstile — empty disables captcha in dev
++# Turnstile — empty disables captcha on localhost only.
++# Production requires TURNSTILE_SECRET and TURNSTILE_SITE_KEY (server will refuse to start without them).
+ TURNSTILE_SECRET=
+ TURNSTILE_SITE_KEY=
+diff --git a/README.md b/README.md
+index 0dcd341..da55d42 100644
+--- a/README.md
++++ b/README.md
+@@ -26,12 +26,22 @@ internal/adapter/     http, postgres, crypto, mail
+ | GET | `/health` | Liveness |
+ | GET | `/.well-known/openid-configuration` | OIDC discovery |
+ | GET | `/jwks` | Public signing keys |
+-| GET/POST | `/register` | Create account |
++| POST | `/register/ticket` | Confidential client (`client_id` + `client_secret`) mints a one-time registration ticket |
++| GET/POST | `/register` | Create account (**requires** `ticket`; otherwise 404) |
+ | GET | `/verify-email?token=` | Confirm email |
+-| GET/POST | `/login` | Sign in (session cookie) |
++| GET/POST | `/login` | Sign in (session cookie). Rate-limited. No public register link. |
+ | POST | `/logout` | End session |
+ | GET | `/authorize` | OAuth2 authorization code (supports PKCE `S256`) |
+ | POST | `/token` | Exchange code / refresh token |
++| GET | `/invite` | Accept an invite (invite-only apps) |
++
++`GET /` is **404**. `/admin` is **404** unless the session is an admin (no login redirect).
++
++Public (mobile) clients use `token_endpoint_auth_method=none` and **must** send PKCE (`code_challenge` / `code_verifier`). They cannot mint registration tickets. Confidential clients keep `client_secret_post` (PKCE optional) and may mint tickets only when `access_mode=public`.
++
++Invite-only apps never use `/register` — issue an invite in admin instead.
++
++Supported scopes: `openid` (required), `email`, `offline_access` (native apps that store a refresh token).
+ 
+ Public (mobile) clients use `token_endpoint_auth_method=none` and **must** send PKCE (`code_challenge` / `code_verifier`). Confidential clients keep `client_secret_post` (PKCE optional).
+ 
+@@ -53,10 +63,14 @@ On localhost, JWT keys and OAuth client defaults are generated/seeded automatica
+ ### OAuth smoke test
+ 
+ ```bash
+-# 1. Register at http://localhost:3001/register
+-# 2. Copy verify URL from server logs, open in browser
+-# 3. Sign in, then open:
+-http://localhost:3001/authorize?client_id=dept-app&redirect_uri=http://localhost:4322/auth/callback&response_type=code&scope=openid%20email%20offline_access&state=dev
++# 1. Mint a registration ticket (confidential client + secret from .env)
++curl -sS -X POST http://localhost:3001/register/ticket \
++  -d client_id=auth-test \
++  -d client_secret=dev-secret-change-me-16
++# 2. Open the returned register_url, create the account
++# 3. Copy verify URL from server logs, open in browser
++# 4. Sign in, then open:
++http://localhost:3001/authorize?client_id=auth-test&redirect_uri=http://localhost:4322/auth/callback&response_type=code&scope=openid%20email%20offline_access&state=dev
+ ```
+ 
+ ## Production
+@@ -67,7 +81,7 @@ Set on the server `.env` only (never commit):
+ - `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` (RSA PEM) or `JWT_*_FILE`
+ - `OAUTH_CLIENT_SECRET`, `OAUTH_REDIRECT_URI`
+ - `COOKIE_SECURE=true`
+-- `TURNSTILE_SECRET`, `TURNSTILE_SITE_KEY`
++- `TURNSTILE_SECRET`, `TURNSTILE_SITE_KEY` (**required** in production)
+ - SMTP settings (or keep log mailer for debugging)
+ 
+ ## License
+diff --git a/cmd/server/main.go b/cmd/server/main.go
+index 8fb48a7..fca5e94 100644
+--- a/cmd/server/main.go
++++ b/cmd/server/main.go
+@@ -21,6 +21,7 @@ import (
+ 	"github.com/taviani/kde-auth/internal/adapter/postgres"
+ 	"github.com/taviani/kde-auth/internal/adapter/turnstile"
+ 	"github.com/taviani/kde-auth/internal/platform/config"
++	"github.com/taviani/kde-auth/internal/platform/ratelimit"
+ 	"github.com/taviani/kde-auth/internal/port"
+ 	"github.com/taviani/kde-auth/internal/usecase"
+ )
+@@ -56,6 +57,7 @@ func main() {
+ 	inviteRepo := postgres.NewInviteRepo(pool)
+ 	sessionRepo := postgres.NewSessionRepo(pool)
+ 	tokenRepo := postgres.NewTokenRepo(pool)
++	ticketRepo := postgres.NewRegistrationTicketRepo(pool)
+ 	healthChecker := postgres.NewHealth(pool)
+ 
+ 	seed := postgres.NewSeed(clientRepo, hasher)
+@@ -83,9 +85,11 @@ func main() {
+ 	sessionTTL := time.Duration(cfg.SessionTTL) * time.Hour
+ 
+ 	healthUC := usecase.NewHealth(healthChecker)
+-	registerUC := usecase.NewRegisterUser(userRepo, hasher, tokenRepo, mailer, captcha, sysClock, issuer, cfg.RegistrationOpen)
++	issueTicketUC := usecase.NewIssueRegisterTicket(clientRepo, ticketRepo, hasher, issuer, sysClock, cfg.RegistrationOpen)
++	registerUC := usecase.NewRegisterUser(userRepo, ticketRepo, appAccessRepo, hasher, tokenRepo, mailer, captcha, sysClock, issuer, cfg.RegistrationOpen)
+ 	verifyUC := usecase.NewVerifyEmail(userRepo, tokenRepo, sysClock)
+ 	loginUC := usecase.NewLogin(userRepo, sessionRepo, hasher, captcha, sysClock, sessionTTL)
++	loginLimiter := ratelimit.New(5, 15*time.Minute)
+ 	logoutUC := usecase.NewLogout(sessionRepo, sysClock)
+ 	resolveSessionUC := usecase.NewResolveSession(sessionRepo, userRepo, sysClock)
+ 	recordAccessUC := usecase.NewRecordAppAccess(appAccessRepo, sysClock)
+@@ -111,8 +115,8 @@ func main() {
+ 	adminHandler := handler.NewAdmin(adminUC, adminClientsUC, adminInvitesUC, renderer)
+ 	router := httpadapter.NewRouter(cfg, httpadapter.Handlers{
+ 		Health:         handler.NewHealth(healthUC),
+-		Register:       handler.NewRegister(registerUC, renderer, cfg.TurnstileSiteKey),
+-		Login:          handler.NewLogin(loginUC, renderer, cfg.TurnstileSiteKey, cfg.CookieSecure),
++		Register:       handler.NewRegister(registerUC, issueTicketUC, renderer, cfg.TurnstileSiteKey),
++		Login:          handler.NewLogin(loginUC, loginLimiter, renderer, cfg.TurnstileSiteKey, cfg.CookieSecure),
+ 		VerifyEmail:    handler.NewVerifyEmail(verifyUC, renderer),
+ 		Logout:         handler.NewLogout(logoutUC, cfg.CookieSecure),
+ 		ForgotPassword: handler.NewForgotPassword(forgotUC, renderer, cfg.TurnstileSiteKey),
+@@ -122,7 +126,7 @@ func main() {
+ 		Authorize:      handler.NewAuthorize(authorizeUC, logoutUC, cfg.CookieSecure),
+ 		Token:          handler.NewToken(tokenUC),
+ 		UserInfo:       handler.NewUserInfo(userInfoUC, issuer),
+-		OIDC:           handler.NewOIDC(oidcUC, issuer, renderer),
++		OIDC:           handler.NewOIDC(oidcUC, issuer),
+ 		Admin:          adminHandler,
+ 		RequireAdmin:   handler.RequireAdmin(resolveSessionUC),
+ 	})
+diff --git a/internal/adapter/http/handler/admin.go b/internal/adapter/http/handler/admin.go
+index f347dbb..f115844 100644
+--- a/internal/adapter/http/handler/admin.go
++++ b/internal/adapter/http/handler/admin.go
+@@ -116,6 +116,28 @@ func (h *Admin) SetStatus(w http.ResponseWriter, r *http.Request) {
+ 	http.Redirect(w, r, next, http.StatusSeeOther)
+ }
+ 
++func (h *Admin) DeleteUser(w http.ResponseWriter, r *http.Request) {
++	actor, ok := AdminUser(r.Context())
++	if !ok {
++		http.NotFound(w, r)
++		return
++	}
++	if err := r.ParseForm(); err != nil {
++		http.Error(w, "bad request", http.StatusBadRequest)
++		return
++	}
++	id := domain.UserID(r.FormValue("user_id"))
++	if err := h.users.Delete(r.Context(), actor, id); err != nil {
++		http.Error(w, response.UserFacingMessage(err), http.StatusBadRequest)
++		return
++	}
++	next := r.FormValue("next")
++	if next == "" {
++		next = "/admin/users"
++	}
++	http.Redirect(w, r, next, http.StatusSeeOther)
++}
++
+ func (h *Admin) Clients(w http.ResponseWriter, r *http.Request) {
+ 	actor, _ := AdminUser(r.Context())
+ 	clients, err := h.clients.List(r.Context())
+diff --git a/internal/adapter/http/handler/admin_auth.go b/internal/adapter/http/handler/admin_auth.go
+index 197e938..b8973f0 100644
+--- a/internal/adapter/http/handler/admin_auth.go
++++ b/internal/adapter/http/handler/admin_auth.go
+@@ -3,7 +3,6 @@ package handler
+ import (
+ 	"context"
+ 	"net/http"
+-	"net/url"
+ 
+ 	"github.com/taviani/kde-auth/internal/adapter/http/response"
+ 	"github.com/taviani/kde-auth/internal/domain"
+@@ -23,13 +22,8 @@ func RequireAdmin(resolve *usecase.ResolveSession) func(http.Handler) http.Handl
+ 	return func(next http.Handler) http.Handler {
+ 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+ 			user, err := resolve.Execute(r.Context(), response.SessionToken(r))
+-			if err != nil {
+-				nextURL := r.URL.RequestURI()
+-				http.Redirect(w, r, "/login?next="+url.QueryEscape(nextURL), http.StatusSeeOther)
+-				return
+-			}
+-			if !user.IsAdmin() {
+-				http.Error(w, "forbidden", http.StatusForbidden)
++			if err != nil || !user.IsAdmin() {
++				http.NotFound(w, r)
+ 				return
+ 			}
+ 			ctx := context.WithValue(r.Context(), adminUserKey, user)
+diff --git a/internal/adapter/http/handler/login.go b/internal/adapter/http/handler/login.go
+index d368473..d658420 100644
+--- a/internal/adapter/http/handler/login.go
++++ b/internal/adapter/http/handler/login.go
+@@ -1,23 +1,27 @@
+ package handler
+ 
+ import (
++	"errors"
+ 	"net/http"
++	"strings"
+ 
+-	"github.com/taviani/kde-auth/internal/adapter/http/response"
+ 	"github.com/taviani/kde-auth/internal/adapter/http/render"
++	"github.com/taviani/kde-auth/internal/adapter/http/response"
+ 	"github.com/taviani/kde-auth/internal/domain"
++	"github.com/taviani/kde-auth/internal/platform/ratelimit"
+ 	"github.com/taviani/kde-auth/internal/usecase"
+ )
+ 
+ type Login struct {
+ 	uc           *usecase.Login
++	limiter      *ratelimit.Limiter
+ 	render       *render.Renderer
+ 	turnstileKey string
+ 	cookieSecure bool
+ }
+ 
+-func NewLogin(uc *usecase.Login, render *render.Renderer, turnstileKey string, cookieSecure bool) *Login {
+-	return &Login{uc: uc, render: render, turnstileKey: turnstileKey, cookieSecure: cookieSecure}
++func NewLogin(uc *usecase.Login, limiter *ratelimit.Limiter, render *render.Renderer, turnstileKey string, cookieSecure bool) *Login {
++	return &Login{uc: uc, limiter: limiter, render: render, turnstileKey: turnstileKey, cookieSecure: cookieSecure}
+ }
+ 
+ func (h *Login) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+@@ -53,6 +57,15 @@ func (h *Login) post(w http.ResponseWriter, r *http.Request) {
+ 		TurnstileSiteKey: h.turnstileKey,
+ 	}
+ 
++	ipKey := "ip:" + ClientIP(r)
++	emailKey := "email:" + strings.ToLower(strings.TrimSpace(email))
++	if h.limiter != nil && h.limiter.TooMany(ipKey, emailKey) {
++		data.Error = response.UserFacingMessage(domain.ErrTooManyAttempts)
++		w.WriteHeader(http.StatusTooManyRequests)
++		h.render.HTML(w, "login.html", data)
++		return
++	}
++
+ 	result, err := h.uc.Execute(r.Context(), usecase.LoginInput{
+ 		Email:        email,
+ 		Password:     r.FormValue("password"),
+@@ -60,15 +73,25 @@ func (h *Login) post(w http.ResponseWriter, r *http.Request) {
+ 		RemoteIP:     ClientIP(r),
+ 	})
+ 	if err != nil {
++		if h.limiter != nil && (errors.Is(err, domain.ErrInvalidCredentials) || errors.Is(err, domain.ErrForbidden)) {
++			h.limiter.Hit(ipKey, emailKey)
++		}
+ 		data.Error = response.UserFacingMessage(err)
+ 		h.render.HTML(w, "login.html", data)
+ 		return
+ 	}
++	if h.limiter != nil {
++		h.limiter.Clear(emailKey)
++	}
+ 
+ 	response.SetSessionCookie(w, result.SessionToken, result.ExpiresAt, h.cookieSecure)
+ 	if next != "" {
+ 		http.Redirect(w, r, next, http.StatusSeeOther)
+ 		return
+ 	}
++	if result.User.IsAdmin() {
++		http.Redirect(w, r, "/admin", http.StatusSeeOther)
++		return
++	}
+ 	http.Redirect(w, r, "/", http.StatusSeeOther)
+ }
+diff --git a/internal/adapter/http/handler/oidc.go b/internal/adapter/http/handler/oidc.go
+index b1b62ec..291f87b 100644
+--- a/internal/adapter/http/handler/oidc.go
++++ b/internal/adapter/http/handler/oidc.go
+@@ -3,7 +3,6 @@ package handler
+ import (
+ 	"net/http"
+ 
+-	"github.com/taviani/kde-auth/internal/adapter/http/render"
+ 	"github.com/taviani/kde-auth/internal/adapter/http/response"
+ 	"github.com/taviani/kde-auth/internal/port"
+ 	"github.com/taviani/kde-auth/internal/usecase"
+@@ -12,11 +11,10 @@ import (
+ type OIDC struct {
+ 	metadata *usecase.OIDCMetadata
+ 	issuer   port.TokenIssuer
+-	render   *render.Renderer
+ }
+ 
+-func NewOIDC(metadata *usecase.OIDCMetadata, issuer port.TokenIssuer, render *render.Renderer) *OIDC {
+-	return &OIDC{metadata: metadata, issuer: issuer, render: render}
++func NewOIDC(metadata *usecase.OIDCMetadata, issuer port.TokenIssuer) *OIDC {
++	return &OIDC{metadata: metadata, issuer: issuer}
+ }
+ 
+ func (h *OIDC) Discovery(w http.ResponseWriter, r *http.Request) {
+@@ -31,7 +29,3 @@ func (h *OIDC) JWKS(w http.ResponseWriter, r *http.Request) {
+ 	}
+ 	response.WriteJSON(w, http.StatusOK, doc)
+ }
+-
+-func (h *OIDC) Root(w http.ResponseWriter, r *http.Request) {
+-	h.render.HTMLData(w, "home.html", nil)
+-}
+diff --git a/internal/adapter/http/handler/register.go b/internal/adapter/http/handler/register.go
+index 3dda3c1..b326d78 100644
+--- a/internal/adapter/http/handler/register.go
++++ b/internal/adapter/http/handler/register.go
+@@ -1,30 +1,30 @@
+ package handler
+ 
+ import (
++	"errors"
+ 	"net/http"
+ 
+-	"github.com/taviani/kde-auth/internal/adapter/http/response"
+ 	"github.com/taviani/kde-auth/internal/adapter/http/render"
++	"github.com/taviani/kde-auth/internal/adapter/http/response"
++	"github.com/taviani/kde-auth/internal/domain"
+ 	"github.com/taviani/kde-auth/internal/usecase"
+ )
+ 
+ type Register struct {
+ 	uc           *usecase.RegisterUser
++	tickets      *usecase.IssueRegisterTicket
+ 	render       *render.Renderer
+ 	turnstileKey string
+ }
+ 
+-func NewRegister(uc *usecase.RegisterUser, render *render.Renderer, turnstileKey string) *Register {
+-	return &Register{uc: uc, render: render, turnstileKey: turnstileKey}
++func NewRegister(uc *usecase.RegisterUser, tickets *usecase.IssueRegisterTicket, render *render.Renderer, turnstileKey string) *Register {
++	return &Register{uc: uc, tickets: tickets, render: render, turnstileKey: turnstileKey}
+ }
+ 
+ func (h *Register) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+ 	switch r.Method {
+ 	case http.MethodGet:
+-		h.render.HTML(w, "register.html", render.PageData{
+-			Title:            "Register",
+-			TurnstileSiteKey: h.turnstileKey,
+-		})
++		h.get(w, r)
+ 	case http.MethodPost:
+ 		h.post(w, r)
+ 	default:
+@@ -32,20 +32,52 @@ func (h *Register) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+ 	}
+ }
+ 
++func (h *Register) IssueTicket(w http.ResponseWriter, r *http.Request) {
++	if r.Method != http.MethodPost {
++		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
++		return
++	}
++	if err := r.ParseForm(); err != nil {
++		http.Error(w, "bad request", http.StatusBadRequest)
++		return
++	}
++	result, err := h.tickets.Execute(r.Context(), usecase.IssueRegisterTicketInput{
++		ClientID:     r.FormValue("client_id"),
++		ClientSecret: r.FormValue("client_secret"),
++	})
++	if err != nil {
++		response.WriteError(w, err)
++		return
++	}
++	response.WriteJSON(w, http.StatusOK, map[string]any{
++		"ticket":       result.Ticket,
++		"expires_in":   result.ExpiresIn,
++		"register_url": result.RegisterURL,
++	})
++}
++
++func (h *Register) get(w http.ResponseWriter, r *http.Request) {
++	ticket := r.URL.Query().Get("ticket")
++	if _, err := h.uc.PeekTicket(r.Context(), ticket); err != nil {
++		http.NotFound(w, r)
++		return
++	}
++	h.render.HTML(w, "register.html", h.pageData("", ticket, ""))
++}
++
+ func (h *Register) post(w http.ResponseWriter, r *http.Request) {
+ 	if err := r.ParseForm(); err != nil {
+ 		http.Error(w, "bad request", http.StatusBadRequest)
+ 		return
+ 	}
+-	email := r.FormValue("email")
+-	password := r.FormValue("password")
+-	confirm := r.FormValue("password_confirm")
+-	data := render.PageData{
+-		Title:            "Register",
+-		Email:            email,
+-		TurnstileSiteKey: h.turnstileKey,
++	ticket := r.FormValue("ticket")
++	if _, err := h.uc.PeekTicket(r.Context(), ticket); err != nil {
++		http.NotFound(w, r)
++		return
+ 	}
+-	if password != confirm {
++	email := r.FormValue("email")
++	data := h.pageData(email, ticket, "")
++	if r.FormValue("password") != r.FormValue("password_confirm") {
+ 		data.Error = "Passwords do not match."
+ 		h.render.HTML(w, "register.html", data)
+ 		return
+@@ -53,11 +85,16 @@ func (h *Register) post(w http.ResponseWriter, r *http.Request) {
+ 
+ 	err := h.uc.Execute(r.Context(), usecase.RegisterInput{
+ 		Email:        email,
+-		Password:     password,
++		Password:     r.FormValue("password"),
+ 		CaptchaToken: r.FormValue("cf-turnstile-response"),
+ 		RemoteIP:     ClientIP(r),
++		Ticket:       ticket,
+ 	})
+ 	if err != nil {
++		if errors.Is(err, domain.ErrInvalidToken) || errors.Is(err, domain.ErrRegistrationClosed) {
++			http.NotFound(w, r)
++			return
++		}
+ 		data.Error = response.UserFacingMessage(err)
+ 		h.render.HTML(w, "register.html", data)
+ 		return
+@@ -67,3 +104,13 @@ func (h *Register) post(w http.ResponseWriter, r *http.Request) {
+ 		Email: email,
+ 	})
+ }
++
++func (h *Register) pageData(email, ticket, errMsg string) render.PageData {
++	return render.PageData{
++		Title:            "Register",
++		Email:            email,
++		Ticket:           ticket,
++		Error:            errMsg,
++		TurnstileSiteKey: h.turnstileKey,
++	}
++}
+diff --git a/internal/adapter/http/render/render.go b/internal/adapter/http/render/render.go
+index d703376..0cc05da 100644
+--- a/internal/adapter/http/render/render.go
++++ b/internal/adapter/http/render/render.go
+@@ -28,6 +28,7 @@ type PageData struct {
+ 	Email            string
+ 	Next             string
+ 	Token            string
++	Ticket           string
+ 	TurnstileSiteKey string
+ }
+ 
+diff --git a/internal/adapter/http/render/render_test.go b/internal/adapter/http/render/render_test.go
+index a6791a6..eddb3bc 100644
+--- a/internal/adapter/http/render/render_test.go
++++ b/internal/adapter/http/render/render_test.go
+@@ -6,36 +6,34 @@ import (
+ 	"testing"
+ )
+ 
+-func TestRegisterTemplate(t *testing.T) {
++func TestRegisterTemplateIncludesTicket(t *testing.T) {
+ 	r, err := New()
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	rec := httptest.NewRecorder()
+-	r.HTML(rec, "register.html", PageData{Title: "Register"})
++	r.HTML(rec, "register.html", PageData{Title: "Register", Ticket: "abc"})
+ 	if rec.Code != 200 {
+ 		t.Fatalf("status %d body %q", rec.Code, rec.Body.String())
+ 	}
+-	if !strings.Contains(rec.Body.String(), "Create account") {
+-		t.Fatalf("unexpected body: %s", rec.Body.String())
++	body := rec.Body.String()
++	if !strings.Contains(body, `name="ticket"`) || !strings.Contains(body, "abc") {
++		t.Fatalf("missing ticket field: %s", body)
+ 	}
+ }
+ 
+-func TestHomeTemplate(t *testing.T) {
++func TestLoginTemplateHasNoRegisterLink(t *testing.T) {
+ 	r, err := New()
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	rec := httptest.NewRecorder()
+-	r.HTMLData(rec, "home.html", nil)
+-	if rec.Code != 200 {
+-		t.Fatalf("status %d body %q", rec.Code, rec.Body.String())
+-	}
++	r.HTML(rec, "login.html", PageData{Title: "Sign in"})
+ 	body := rec.Body.String()
+-	if !strings.Contains(body, "in girum imus nocte et consumimur igni") {
+-		t.Fatalf("unexpected body: %s", body)
++	if strings.Contains(body, "/register") {
++		t.Fatal("login must not link to register")
+ 	}
+-	if strings.Contains(body, "/login") {
+-		t.Fatal("home page must not link to login")
++	if !strings.Contains(body, "/forgot-password") {
++		t.Fatal("login should still link to forgot-password")
+ 	}
+ }
+diff --git a/internal/adapter/http/render/templates/admin_users.html b/internal/adapter/http/render/templates/admin_users.html
+index 309d3a7..25e770a 100644
+--- a/internal/adapter/http/render/templates/admin_users.html
++++ b/internal/adapter/http/render/templates/admin_users.html
+@@ -96,6 +96,13 @@
+             <button type="submit">Activate</button>
+           </form>
+           {{end}}
++          {{if and (ne .User.ID $.Actor.ID) (ne .User.Role "admin")}}
++          <form method="post" action="/admin/users/delete" class="actions" onsubmit="return confirm('Delete this account permanently? The email can be used again.');">
++            <input type="hidden" name="user_id" value="{{.User.ID}}">
++            <input type="hidden" name="next" value="/admin/users?q={{$.Query}}&status={{$.Status}}&role={{$.Role}}&client={{$.Client}}&page={{$.Page}}">
++            <button type="submit">Delete</button>
++          </form>
++          {{end}}
+         </td>
+       </tr>
+       {{else}}
+diff --git a/internal/adapter/http/render/templates/home.html b/internal/adapter/http/render/templates/home.html
+deleted file mode 100644
+index 6068ce1..0000000
+--- a/internal/adapter/http/render/templates/home.html
++++ /dev/null
+@@ -1,62 +0,0 @@
+-<!doctype html>
+-<html lang="la">
+-<head>
+-  <meta charset="utf-8">
+-  <meta name="viewport" content="width=device-width, initial-scale=1">
+-  <meta name="robots" content="noindex, nofollow">
+-  <title>in girum imus nocte et consumimur igni</title>
+-  <link rel="preconnect" href="https://fonts.googleapis.com">
+-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+-  <style>
+-    :root {
+-      --ink: #c8c2b4;
+-      --void: #0c0b0a;
+-      --ember: #3a2818;
+-    }
+-    * { box-sizing: border-box; }
+-    html, body { height: 100%; margin: 0; }
+-    body {
+-      min-height: 100%;
+-      display: grid;
+-      place-items: center;
+-      background:
+-        radial-gradient(ellipse 80% 60% at 50% 40%, var(--ember) 0%, transparent 55%),
+-        radial-gradient(ellipse 100% 100% at 50% 100%, #1a120c 0%, var(--void) 70%);
+-      color: var(--ink);
+-      font-family: "Cormorant Garamond", "Palatino Linotype", Palatino, serif;
+-    }
+-    main {
+-      max-width: 28rem;
+-      padding: 2rem 1.5rem;
+-      text-align: center;
+-    }
+-    p {
+-      margin: 0;
+-      font-size: clamp(1.15rem, 3.2vw, 1.55rem);
+-      font-style: italic;
+-      font-weight: 400;
+-      letter-spacing: 0.04em;
+-      line-height: 1.55;
+-      opacity: 0;
+-      animation: rise 2.4s ease forwards, breath 8s ease-in-out 2.4s infinite;
+-    }
+-    @keyframes rise {
+-      from { opacity: 0; transform: translateY(0.6rem); }
+-      to { opacity: 0.88; transform: translateY(0); }
+-    }
+-    @keyframes breath {
+-      0%, 100% { opacity: 0.72; }
+-      50% { opacity: 0.95; }
+-    }
+-    @media (prefers-reduced-motion: reduce) {
+-      p { animation: none; opacity: 0.88; }
+-    }
+-  </style>
+-</head>
+-<body>
+-  <main>
+-    <p>in girum imus nocte et consumimur igni</p>
+-  </main>
+-</body>
+-</html>
+diff --git a/internal/adapter/http/render/templates/login.html b/internal/adapter/http/render/templates/login.html
+index 03f2cf1..724c345 100644
+--- a/internal/adapter/http/render/templates/login.html
++++ b/internal/adapter/http/render/templates/login.html
+@@ -3,6 +3,7 @@
+ <head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1">
++  <meta name="robots" content="noindex, nofollow">
+   <title>{{.Title}} · kde-auth</title>
+   <style>
+     body { font-family: system-ui, sans-serif; max-width: 420px; margin: 4rem auto; padding: 0 1rem; color: #1a1a1a; }
+@@ -29,6 +30,6 @@
+     {{if .TurnstileSiteKey}}<div class="cf-turnstile" data-sitekey="{{.TurnstileSiteKey}}" data-theme="light" style="margin-top:1rem"></div>{{end}}
+     <button type="submit">Sign in</button>
+   </form>
+-  <p class="footer">No account? <a href="/register">Register</a> · <a href="/forgot-password">Forgot password?</a></p>
++  <p class="footer"><a href="/forgot-password">Forgot password?</a></p>
+ </body>
+ </html>
+diff --git a/internal/adapter/http/render/templates/register.html b/internal/adapter/http/render/templates/register.html
+index 7c40850..3bc73f3 100644
+--- a/internal/adapter/http/render/templates/register.html
++++ b/internal/adapter/http/render/templates/register.html
+@@ -3,6 +3,7 @@
+ <head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1">
++  <meta name="robots" content="noindex, nofollow">
+   <title>{{.Title}} · kde-auth</title>
+   <style>
+     body { font-family: system-ui, sans-serif; max-width: 420px; margin: 4rem auto; padding: 0 1rem; color: #1a1a1a; }
+@@ -21,6 +22,7 @@
+   {{if .Error}}<div class="msg error">{{.Error}}</div>{{end}}
+   <h1>Create account</h1>
+   <form method="post" action="/register">
++    <input type="hidden" name="ticket" value="{{.Ticket}}">
+     <label>Email<input type="email" name="email" value="{{.Email}}" required autocomplete="email"></label>
+     <label>Password<input type="password" name="password" required autocomplete="new-password" minlength="12"></label>
+     <label>Confirm password<input type="password" name="password_confirm" required autocomplete="new-password" minlength="12"></label>
+diff --git a/internal/adapter/http/render/templates/verify_result.html b/internal/adapter/http/render/templates/verify_result.html
+index f658a70..f545317 100644
+--- a/internal/adapter/http/render/templates/verify_result.html
++++ b/internal/adapter/http/render/templates/verify_result.html
+@@ -26,7 +26,6 @@
+   <h1>Verification failed</h1>
+   <p>This link is invalid or has already been used. Request a new account or try signing in if you already verified.</p>
+   <a class="cta" href="/login">Go to sign in</a>
+-  <p class="footer"><a href="/register">Create an account</a></p>
+   {{else}}
+   <div class="msg success">{{.Success}}</div>
+   <h1>Email verified</h1>
+diff --git a/internal/adapter/http/render/templates/verify_sent.html b/internal/adapter/http/render/templates/verify_sent.html
+index 9d20869..0bd5773 100644
+--- a/internal/adapter/http/render/templates/verify_sent.html
++++ b/internal/adapter/http/render/templates/verify_sent.html
+@@ -23,6 +23,5 @@
+   <h1>Verify your email</h1>
+   <p>We sent a verification link to <strong>{{.Email}}</strong>. Open it to activate your account.</p>
+   <a class="cta" href="/login">Go to sign in</a>
+-  <p class="footer">Wrong address? <a href="/register">Register again</a></p>
+ </body>
+ </html>
+diff --git a/internal/adapter/http/response/json.go b/internal/adapter/http/response/json.go
+index 6edbaf8..7252f34 100644
+--- a/internal/adapter/http/response/json.go
++++ b/internal/adapter/http/response/json.go
+@@ -33,8 +33,11 @@ func WriteError(w http.ResponseWriter, err error) {
+ 		WriteJSON(w, http.StatusBadRequest, oauthError("invalid_grant", err.Error()))
+ 	case errors.Is(err, domain.ErrEmailTaken):
+ 		WriteJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+-	case errors.Is(err, domain.ErrRegistrationClosed):
++	case errors.Is(err, domain.ErrRegistrationClosed),
++		errors.Is(err, domain.ErrInviteOnlyRegistration):
+ 		WriteJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
++	case errors.Is(err, domain.ErrTooManyAttempts):
++		WriteJSON(w, http.StatusTooManyRequests, map[string]string{"error": err.Error()})
+ 	default:
+ 		var v domain.ValidationError
+ 		if errors.As(err, &v) {
+@@ -57,6 +60,10 @@ func UserFacingMessage(err error) string {
+ 		return "An account with this email already exists."
+ 	case errors.Is(err, domain.ErrRegistrationClosed):
+ 		return "Registration is currently closed."
++	case errors.Is(err, domain.ErrInviteOnlyRegistration):
++		return "This application is invite-only. Use the invite link you received."
++	case errors.Is(err, domain.ErrTooManyAttempts):
++		return "Too many attempts. Try again later."
+ 	case errors.Is(err, domain.ErrCaptchaFailed):
+ 		return "Captcha verification failed. Please try again."
+ 	case errors.Is(err, domain.ErrInvalidToken):
+diff --git a/internal/adapter/http/server.go b/internal/adapter/http/server.go
+index 274c14c..0cf1630 100644
+--- a/internal/adapter/http/server.go
++++ b/internal/adapter/http/server.go
+@@ -36,11 +36,11 @@ func NewRouter(cfg config.Config, h Handlers) http.Handler {
+ 	r.Use(middleware.Recoverer)
+ 
+ 	r.Get("/health", h.Health.ServeHTTP)
+-	r.Get("/", h.OIDC.Root)
+ 
+ 	r.Get("/.well-known/openid-configuration", h.OIDC.Discovery)
+ 	r.Get("/jwks", h.OIDC.JWKS)
+ 
++	r.Post("/register/ticket", h.Register.IssueTicket)
+ 	r.Get("/register", h.Register.ServeHTTP)
+ 	r.Post("/register", h.Register.ServeHTTP)
+ 	r.Get("/login", h.Login.ServeHTTP)
+@@ -69,6 +69,7 @@ func NewRouter(cfg config.Config, h Handlers) http.Handler {
+ 			ar.Get("/", h.Admin.Dashboard)
+ 			ar.Get("/users", h.Admin.Users)
+ 			ar.Post("/users/status", h.Admin.SetStatus)
++			ar.Post("/users/delete", h.Admin.DeleteUser)
+ 			ar.Get("/clients", h.Admin.Clients)
+ 			ar.Post("/clients", h.Admin.CreateClient)
+ 			ar.Post("/clients/access-mode", h.Admin.SetAccessMode)
+diff --git a/internal/adapter/postgres/registration_ticket_repo.go b/internal/adapter/postgres/registration_ticket_repo.go
+new file mode 100644
+index 0000000..25b5a2a
+--- /dev/null
++++ b/internal/adapter/postgres/registration_ticket_repo.go
+@@ -0,0 +1,77 @@
++package postgres
++
++import (
++	"context"
++	"errors"
++	"time"
++
++	"github.com/jackc/pgx/v5"
++	"github.com/jackc/pgx/v5/pgxpool"
++
++	"github.com/taviani/kde-auth/internal/domain"
++	"github.com/taviani/kde-auth/internal/port"
++)
++
++type RegistrationTicketRepo struct {
++	pool *pgxpool.Pool
++}
++
++func NewRegistrationTicketRepo(pool *pgxpool.Pool) *RegistrationTicketRepo {
++	return &RegistrationTicketRepo{pool: pool}
++}
++
++func (r *RegistrationTicketRepo) Create(ctx context.Context, ticket domain.RegistrationTicket, tokenHash string) error {
++	_, err := r.pool.Exec(ctx, `
++		INSERT INTO registration_tickets (token_hash, client_id, expires_at)
++		VALUES ($1, $2, $3)
++	`, tokenHash, ticket.ClientID, ticket.ExpiresAt)
++	return err
++}
++
++func (r *RegistrationTicketRepo) Peek(ctx context.Context, tokenHash string, at time.Time) (domain.RegistrationTicket, error) {
++	return r.load(ctx, tokenHash, at, false)
++}
++
++func (r *RegistrationTicketRepo) Consume(ctx context.Context, tokenHash string, at time.Time) (domain.RegistrationTicket, error) {
++	return r.load(ctx, tokenHash, at, true)
++}
++
++func (r *RegistrationTicketRepo) load(ctx context.Context, tokenHash string, at time.Time, consume bool) (domain.RegistrationTicket, error) {
++	tx, err := r.pool.Begin(ctx)
++	if err != nil {
++		return domain.RegistrationTicket{}, err
++	}
++	defer tx.Rollback(ctx)
++
++	row := tx.QueryRow(ctx, `
++		SELECT client_id, expires_at, used_at
++		FROM registration_tickets
++		WHERE token_hash = $1
++		FOR UPDATE
++	`, tokenHash)
++
++	var t domain.RegistrationTicket
++	var usedAt *time.Time
++	err = row.Scan(&t.ClientID, &t.ExpiresAt, &usedAt)
++	if errors.Is(err, pgx.ErrNoRows) {
++		return domain.RegistrationTicket{}, domain.ErrNotFound
++	}
++	if err != nil {
++		return domain.RegistrationTicket{}, err
++	}
++	t.UsedAt = usedAt
++	if usedAt != nil || !at.Before(t.ExpiresAt) {
++		return domain.RegistrationTicket{}, domain.ErrInvalidToken
++	}
++	if consume {
++		if _, err := tx.Exec(ctx, `UPDATE registration_tickets SET used_at = $2 WHERE token_hash = $1`, tokenHash, at); err != nil {
++			return domain.RegistrationTicket{}, err
++		}
++	}
++	if err := tx.Commit(ctx); err != nil {
++		return domain.RegistrationTicket{}, err
++	}
++	return t, nil
++}
++
++var _ port.RegistrationTicketRepository = (*RegistrationTicketRepo)(nil)
+diff --git a/internal/adapter/postgres/user_admin_repo.go b/internal/adapter/postgres/user_admin_repo.go
+index c6788ff..f914383 100644
+--- a/internal/adapter/postgres/user_admin_repo.go
++++ b/internal/adapter/postgres/user_admin_repo.go
+@@ -117,6 +117,22 @@ func (r *UserAdminRepo) Stats(ctx context.Context, now time.Time) (domain.UserSt
+ 	return s, rows.Err()
+ }
+ 
++func (r *UserAdminRepo) ByID(ctx context.Context, id domain.UserID) (domain.User, error) {
++	row := r.pool.QueryRow(ctx, selectUserByIDSQL, id)
++	return scanUser(row)
++}
++
++func (r *UserAdminRepo) Delete(ctx context.Context, id domain.UserID) error {
++	tag, err := r.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
++	if err != nil {
++		return err
++	}
++	if tag.RowsAffected() == 0 {
++		return domain.ErrNotFound
++	}
++	return nil
++}
++
+ func (r *UserAdminRepo) SetStatus(ctx context.Context, id domain.UserID, status domain.UserStatus, at time.Time) error {
+ 	tag, err := r.pool.Exec(ctx, `
+ 		UPDATE users SET status = $2, updated_at = $3 WHERE id = $1
+diff --git a/internal/domain/errors.go b/internal/domain/errors.go
+index 8edff6e..7ed1d17 100644
+--- a/internal/domain/errors.go
++++ b/internal/domain/errors.go
+@@ -3,20 +3,22 @@ package domain
+ import "errors"
+ 
+ var (
+-	ErrNotFound            = errors.New("not found")
+-	ErrInvalidCredentials  = errors.New("invalid credentials")
+-	ErrEmailTaken          = errors.New("email already registered")
+-	ErrRegistrationClosed  = errors.New("registration is closed")
+-	ErrInvalidRedirectURI  = errors.New("invalid redirect uri")
+-	ErrInvalidClient       = errors.New("invalid client")
+-	ErrInvalidGrant        = errors.New("invalid grant")
+-	ErrInvalidScope        = errors.New("invalid scope")
+-	ErrUnauthorized        = errors.New("unauthorized")
+-	ErrForbidden           = errors.New("forbidden")
+-	ErrNoAppAccess         = errors.New("no access to this application")
+-	ErrInvalidToken        = errors.New("invalid token")
+-	ErrCaptchaFailed       = errors.New("captcha verification failed")
+-	ErrValidation          = errors.New("validation failed")
++	ErrNotFound               = errors.New("not found")
++	ErrInvalidCredentials     = errors.New("invalid credentials")
++	ErrEmailTaken             = errors.New("email already registered")
++	ErrRegistrationClosed     = errors.New("registration is closed")
++	ErrInviteOnlyRegistration = errors.New("this application is invite-only")
++	ErrTooManyAttempts        = errors.New("too many attempts")
++	ErrInvalidRedirectURI     = errors.New("invalid redirect uri")
++	ErrInvalidClient          = errors.New("invalid client")
++	ErrInvalidGrant           = errors.New("invalid grant")
++	ErrInvalidScope           = errors.New("invalid scope")
++	ErrUnauthorized           = errors.New("unauthorized")
++	ErrForbidden              = errors.New("forbidden")
++	ErrNoAppAccess            = errors.New("no access to this application")
++	ErrInvalidToken           = errors.New("invalid token")
++	ErrCaptchaFailed          = errors.New("captcha verification failed")
++	ErrValidation             = errors.New("validation failed")
+ )
+ 
+ type ValidationError struct {
+diff --git a/internal/domain/token.go b/internal/domain/token.go
+index 681f8e0..9c85cd9 100644
+--- a/internal/domain/token.go
++++ b/internal/domain/token.go
+@@ -38,6 +38,13 @@ type PasswordResetToken struct {
+ 	ExpiresAt time.Time
+ }
+ 
++type RegistrationTicket struct {
++	Token     string
++	ClientID  ClientID
++	ExpiresAt time.Time
++	UsedAt    *time.Time
++}
++
+ func ParseScope(scope string) error {
+ 	if scope == "" {
+ 		return ValidationError{Field: "scope", Message: "scope is required"}
+diff --git a/internal/platform/config/config.go b/internal/platform/config/config.go
+index 06f5398..0ef98e1 100644
+--- a/internal/platform/config/config.go
++++ b/internal/platform/config/config.go
+@@ -23,10 +23,10 @@ type Config struct {
+ 	JWTPrivateKeyPEM string
+ 	JWTPublicKeyPEM  string
+ 
+-	OAuthClientID       string
+-	OAuthClientSecret   string
+-	OAuthClientName     string
+-	OAuthRedirectURI    string
++	OAuthClientID     string
++	OAuthClientSecret string
++	OAuthClientName   string
++	OAuthRedirectURI  string
+ 
+ 	SMTPHost     string
+ 	SMTPPort     int
+@@ -55,26 +55,26 @@ func Load() (Config, error) {
+ 	}
+ 
+ 	cfg := Config{
+-		Port:             port,
+-		Issuer:           strings.TrimRight(os.Getenv("ISSUER"), "/"),
+-		DatabaseURL:      os.Getenv("DATABASE_URL"),
+-		MigrationsPath:   getEnv("MIGRATIONS_PATH", "migrations"),
+-		RegistrationOpen: os.Getenv("REGISTRATION_OPEN") != "false",
+-		CookieSecure:     os.Getenv("COOKIE_SECURE") == "true",
+-		SessionTTL:       sessionTTL,
+-		JWTPrivateKeyPEM: os.Getenv("JWT_PRIVATE_KEY"),
+-		JWTPublicKeyPEM:  os.Getenv("JWT_PUBLIC_KEY"),
+-		OAuthClientID:       getEnv("OAUTH_CLIENT_ID", "dept-app"),
+-		OAuthClientSecret:   os.Getenv("OAUTH_CLIENT_SECRET"),
+-		OAuthClientName:     getEnv("OAUTH_CLIENT_NAME", "Department App"),
+-		OAuthRedirectURI:    os.Getenv("OAUTH_REDIRECT_URI"),
+-		SMTPHost:            os.Getenv("SMTP_HOST"),
+-		SMTPPort:            smtpPort,
+-		SMTPUser:            os.Getenv("SMTP_USER"),
+-		SMTPPassword:        os.Getenv("SMTP_PASSWORD"),
+-		SMTPFrom:            os.Getenv("SMTP_FROM"),
+-		TurnstileSecret:     os.Getenv("TURNSTILE_SECRET"),
+-		TurnstileSiteKey:    os.Getenv("TURNSTILE_SITE_KEY"),
++		Port:              port,
++		Issuer:            strings.TrimRight(os.Getenv("ISSUER"), "/"),
++		DatabaseURL:       os.Getenv("DATABASE_URL"),
++		MigrationsPath:    getEnv("MIGRATIONS_PATH", "migrations"),
++		RegistrationOpen:  os.Getenv("REGISTRATION_OPEN") != "false",
++		CookieSecure:      os.Getenv("COOKIE_SECURE") == "true",
++		SessionTTL:        sessionTTL,
++		JWTPrivateKeyPEM:  os.Getenv("JWT_PRIVATE_KEY"),
++		JWTPublicKeyPEM:   os.Getenv("JWT_PUBLIC_KEY"),
++		OAuthClientID:     getEnv("OAUTH_CLIENT_ID", "dept-app"),
++		OAuthClientSecret: os.Getenv("OAUTH_CLIENT_SECRET"),
++		OAuthClientName:   getEnv("OAUTH_CLIENT_NAME", "Department App"),
++		OAuthRedirectURI:  os.Getenv("OAUTH_REDIRECT_URI"),
++		SMTPHost:          os.Getenv("SMTP_HOST"),
++		SMTPPort:          smtpPort,
++		SMTPUser:          os.Getenv("SMTP_USER"),
++		SMTPPassword:      os.Getenv("SMTP_PASSWORD"),
++		SMTPFrom:          os.Getenv("SMTP_FROM"),
++		TurnstileSecret:   os.Getenv("TURNSTILE_SECRET"),
++		TurnstileSiteKey:  os.Getenv("TURNSTILE_SITE_KEY"),
+ 	}
+ 
+ 	if cfg.Issuer == "" {
+@@ -83,6 +83,9 @@ func Load() (Config, error) {
+ 	if cfg.DatabaseURL == "" {
+ 		return Config{}, fmt.Errorf("DATABASE_URL is required")
+ 	}
++	if !isLocalIssuer(cfg.Issuer) && (cfg.TurnstileSecret == "" || cfg.TurnstileSiteKey == "") {
++		return Config{}, fmt.Errorf("TURNSTILE_SECRET and TURNSTILE_SITE_KEY are required in production")
++	}
+ 
+ 	if cfg.JWTPrivateKeyPEM == "" {
+ 		cfg.JWTPrivateKeyPEM, err = pemFromEnvOrFile("JWT_PRIVATE_KEY", "JWT_PRIVATE_KEY_FILE")
+diff --git a/internal/platform/ratelimit/limiter.go b/internal/platform/ratelimit/limiter.go
+new file mode 100644
+index 0000000..1f2c50d
+--- /dev/null
++++ b/internal/platform/ratelimit/limiter.go
+@@ -0,0 +1,84 @@
++package ratelimit
++
++import (
++	"sync"
++	"time"
++)
++
++type Limiter struct {
++	mu     sync.Mutex
++	max    int
++	window time.Duration
++	hits   map[string][]time.Time
++	now    func() time.Time
++}
++
++func New(max int, window time.Duration) *Limiter {
++	return &Limiter{
++		max:    max,
++		window: window,
++		hits:   make(map[string][]time.Time),
++		now:    time.Now,
++	}
++}
++
++func (l *Limiter) TooMany(keys ...string) bool {
++	if l == nil || l.max <= 0 {
++		return false
++	}
++	now := l.now()
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	for _, key := range keys {
++		if key == "" {
++			continue
++		}
++		if len(l.pruned(key, now)) >= l.max {
++			return true
++		}
++	}
++	return false
++}
++
++func (l *Limiter) Hit(keys ...string) {
++	if l == nil || l.max <= 0 {
++		return
++	}
++	now := l.now()
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	for _, key := range keys {
++		if key == "" {
++			continue
++		}
++		xs := append(l.pruned(key, now), now)
++		l.hits[key] = xs
++	}
++}
++
++func (l *Limiter) Clear(keys ...string) {
++	if l == nil {
++		return
++	}
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	for _, key := range keys {
++		delete(l.hits, key)
++	}
++}
++
++func (l *Limiter) pruned(key string, now time.Time) []time.Time {
++	cutoff := now.Add(-l.window)
++	xs := l.hits[key]
++	i := 0
++	for i < len(xs) && !xs[i].After(cutoff) {
++		i++
++	}
++	xs = xs[i:]
++	if len(xs) == 0 {
++		delete(l.hits, key)
++		return nil
++	}
++	l.hits[key] = xs
++	return xs
++}
+diff --git a/internal/platform/ratelimit/limiter_test.go b/internal/platform/ratelimit/limiter_test.go
+new file mode 100644
+index 0000000..d2bc6b7
+--- /dev/null
++++ b/internal/platform/ratelimit/limiter_test.go
+@@ -0,0 +1,30 @@
++package ratelimit
++
++import (
++	"testing"
++	"time"
++)
++
++func TestLimiterWindow(t *testing.T) {
++	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
++	l := New(2, 15*time.Minute)
++	l.now = func() time.Time { return now }
++
++	if l.TooMany("ip:1") {
++		t.Fatal("empty should allow")
++	}
++	l.Hit("ip:1")
++	l.Hit("ip:1")
++	if !l.TooMany("ip:1") {
++		t.Fatal("expected block after 2 hits")
++	}
++	now = now.Add(16 * time.Minute)
++	if l.TooMany("ip:1") {
++		t.Fatal("window should have elapsed")
++	}
++	l.Hit("email:a@b.c")
++	l.Clear("email:a@b.c")
++	if l.TooMany("email:a@b.c") {
++		t.Fatal("cleared key should allow")
++	}
++}
+diff --git a/internal/port/admin.go b/internal/port/admin.go
+index 60f9881..56c4e4e 100644
+--- a/internal/port/admin.go
++++ b/internal/port/admin.go
+@@ -11,7 +11,9 @@ type UserAdminRepository interface {
+ 	List(ctx context.Context, filter domain.UserListFilter) ([]domain.User, error)
+ 	Count(ctx context.Context, filter domain.UserListFilter) (int, error)
+ 	Stats(ctx context.Context, now time.Time) (domain.UserStats, error)
++	ByID(ctx context.Context, id domain.UserID) (domain.User, error)
+ 	SetStatus(ctx context.Context, id domain.UserID, status domain.UserStatus, at time.Time) error
++	Delete(ctx context.Context, id domain.UserID) error
+ 	ListClientIDsForUsers(ctx context.Context, userIDs []domain.UserID) (map[domain.UserID][]domain.ClientID, error)
+ }
+ 
+diff --git a/internal/port/registration_ticket.go b/internal/port/registration_ticket.go
+new file mode 100644
+index 0000000..5408243
+--- /dev/null
++++ b/internal/port/registration_ticket.go
+@@ -0,0 +1,14 @@
++package port
++
++import (
++	"context"
++	"time"
++
++	"github.com/taviani/kde-auth/internal/domain"
++)
++
++type RegistrationTicketRepository interface {
++	Create(ctx context.Context, ticket domain.RegistrationTicket, tokenHash string) error
++	Peek(ctx context.Context, tokenHash string, at time.Time) (domain.RegistrationTicket, error)
++	Consume(ctx context.Context, tokenHash string, at time.Time) (domain.RegistrationTicket, error)
++}
+diff --git a/internal/usecase/admin.go b/internal/usecase/admin.go
+index b0f3271..b0a08de 100644
+--- a/internal/usecase/admin.go
++++ b/internal/usecase/admin.go
+@@ -19,7 +19,7 @@ func NewAdminUsers(users port.UserAdminRepository, clock port.Clock) *AdminUsers
+ }
+ 
+ type AdminUserRow struct {
+-	User     domain.User
++	User      domain.User
+ 	ClientIDs []domain.ClientID
+ }
+ 
+@@ -80,6 +80,26 @@ func (uc *AdminUsers) SetStatus(ctx context.Context, actor domain.User, id domai
+ 	return uc.users.SetStatus(ctx, id, status, uc.clock.Now())
+ }
+ 
++func (uc *AdminUsers) Delete(ctx context.Context, actor domain.User, id domain.UserID) error {
++	if !actor.IsAdmin() {
++		return domain.ErrForbidden
++	}
++	if actor.ID == id {
++		return domain.ValidationError{Field: "user_id", Message: "cannot delete your own account"}
++	}
++	if id == "" {
++		return domain.ValidationError{Field: "user_id", Message: "required"}
++	}
++	target, err := uc.users.ByID(ctx, id)
++	if err != nil {
++		return err
++	}
++	if target.IsAdmin() {
++		return domain.ValidationError{Field: "user_id", Message: "cannot delete an admin account"}
++	}
++	return uc.users.Delete(ctx, id)
++}
++
+ type RecordAppAccess struct {
+ 	accesses port.AppAccessRepository
+ 	clock    port.Clock
+diff --git a/internal/usecase/login.go b/internal/usecase/login.go
+index 73b362b..e6b3a5f 100644
+--- a/internal/usecase/login.go
++++ b/internal/usecase/login.go
+@@ -11,11 +11,11 @@ import (
+ )
+ 
+ type Login struct {
+-	users    port.UserRepository
+-	sessions port.SessionRepository
+-	hasher   port.PasswordHasher
+-	captcha  port.CaptchaVerifier
+-	clock    port.Clock
++	users      port.UserRepository
++	sessions   port.SessionRepository
++	hasher     port.PasswordHasher
++	captcha    port.CaptchaVerifier
++	clock      port.Clock
+ 	sessionTTL time.Duration
+ }
+ 
+@@ -47,6 +47,7 @@ type LoginInput struct {
+ type LoginResult struct {
+ 	SessionToken string
+ 	ExpiresAt    time.Time
++	User         domain.User
+ }
+ 
+ func (uc *Login) Execute(ctx context.Context, in LoginInput) (LoginResult, error) {
+@@ -93,7 +94,7 @@ func (uc *Login) Execute(ctx context.Context, in LoginInput) (LoginResult, error
+ 	if err := uc.sessions.Create(ctx, session, crypto.HashToken(rawToken)); err != nil {
+ 		return LoginResult{}, err
+ 	}
+-	return LoginResult{SessionToken: rawToken, ExpiresAt: expiresAt}, nil
++	return LoginResult{SessionToken: rawToken, ExpiresAt: expiresAt, User: user}, nil
+ }
+ 
+ type Logout struct {
+diff --git a/internal/usecase/register.go b/internal/usecase/register.go
+index 1f9cbdd..8cc4322 100644
+--- a/internal/usecase/register.go
++++ b/internal/usecase/register.go
+@@ -11,21 +11,103 @@ import (
+ 	"github.com/taviani/kde-auth/internal/port"
+ )
+ 
+-const emailVerifyTTL = 24 * time.Hour
++const (
++	emailVerifyTTL        = 24 * time.Hour
++	registrationTicketTTL = 10 * time.Minute
++)
++
++type IssueRegisterTicket struct {
++	clients          port.ClientRepository
++	tickets          port.RegistrationTicketRepository
++	hasher           port.PasswordHasher
++	issuer           port.TokenIssuer
++	clock            port.Clock
++	registrationOpen bool
++}
++
++func NewIssueRegisterTicket(
++	clients port.ClientRepository,
++	tickets port.RegistrationTicketRepository,
++	hasher port.PasswordHasher,
++	issuer port.TokenIssuer,
++	clock port.Clock,
++	registrationOpen bool,
++) *IssueRegisterTicket {
++	return &IssueRegisterTicket{
++		clients:          clients,
++		tickets:          tickets,
++		hasher:           hasher,
++		issuer:           issuer,
++		clock:            clock,
++		registrationOpen: registrationOpen,
++	}
++}
++
++type IssueRegisterTicketInput struct {
++	ClientID     string
++	ClientSecret string
++}
++
++type IssueRegisterTicketResult struct {
++	Ticket      string
++	ExpiresIn   int
++	RegisterURL string
++}
++
++func (uc *IssueRegisterTicket) Execute(ctx context.Context, in IssueRegisterTicketInput) (IssueRegisterTicketResult, error) {
++	if !uc.registrationOpen {
++		return IssueRegisterTicketResult{}, domain.ErrRegistrationClosed
++	}
++	client, err := uc.clients.ByClientID(ctx, domain.ClientID(in.ClientID))
++	if err != nil {
++		return IssueRegisterTicketResult{}, domain.ErrInvalidClient
++	}
++	if client.IsPublic() {
++		return IssueRegisterTicketResult{}, domain.ErrInvalidClient
++	}
++	if in.ClientSecret == "" || !uc.hasher.Verify(client.ClientSecretHash, domain.PlainPassword(in.ClientSecret)) {
++		return IssueRegisterTicketResult{}, domain.ErrInvalidClient
++	}
++	if client.IsInviteOnly() {
++		return IssueRegisterTicketResult{}, domain.ErrInviteOnlyRegistration
++	}
++
++	raw, err := crypto.RandomToken(32)
++	if err != nil {
++		return IssueRegisterTicketResult{}, err
++	}
++	now := uc.clock.Now()
++	expiresAt := now.Add(registrationTicketTTL)
++	if err := uc.tickets.Create(ctx, domain.RegistrationTicket{
++		ClientID:  client.ClientID,
++		ExpiresAt: expiresAt,
++	}, crypto.HashToken(raw)); err != nil {
++		return IssueRegisterTicketResult{}, err
++	}
++	return IssueRegisterTicketResult{
++		Ticket:      raw,
++		ExpiresIn:   int(registrationTicketTTL.Seconds()),
++		RegisterURL: fmt.Sprintf("%s/register?ticket=%s", uc.issuer.Issuer(), raw),
++	}, nil
++}
+ 
+ type RegisterUser struct {
+-	users      port.UserRepository
+-	hasher     port.PasswordHasher
+-	tokens     port.TokenRepository
+-	mailer     port.Mailer
+-	captcha    port.CaptchaVerifier
+-	clock      port.Clock
+-	issuer     port.TokenIssuer
++	users            port.UserRepository
++	tickets          port.RegistrationTicketRepository
++	accesses         port.AppAccessRepository
++	hasher           port.PasswordHasher
++	tokens           port.TokenRepository
++	mailer           port.Mailer
++	captcha          port.CaptchaVerifier
++	clock            port.Clock
++	issuer           port.TokenIssuer
+ 	registrationOpen bool
+ }
+ 
+ func NewRegisterUser(
+ 	users port.UserRepository,
++	tickets port.RegistrationTicketRepository,
++	accesses port.AppAccessRepository,
+ 	hasher port.PasswordHasher,
+ 	tokens port.TokenRepository,
+ 	mailer port.Mailer,
+@@ -36,6 +118,8 @@ func NewRegisterUser(
+ ) *RegisterUser {
+ 	return &RegisterUser{
+ 		users:            users,
++		tickets:          tickets,
++		accesses:         accesses,
+ 		hasher:           hasher,
+ 		tokens:           tokens,
+ 		mailer:           mailer,
+@@ -51,12 +135,27 @@ type RegisterInput struct {
+ 	Password     string
+ 	CaptchaToken string
+ 	RemoteIP     string
++	Ticket       string
+ }
+ 
+-func (uc *RegisterUser) Execute(ctx context.Context, in RegisterInput) error {
++func (uc *RegisterUser) PeekTicket(ctx context.Context, rawTicket string) (domain.RegistrationTicket, error) {
+ 	if !uc.registrationOpen {
+-		return domain.ErrRegistrationClosed
++		return domain.RegistrationTicket{}, domain.ErrRegistrationClosed
++	}
++	if rawTicket == "" {
++		return domain.RegistrationTicket{}, domain.ErrInvalidToken
+ 	}
++	ticket, err := uc.tickets.Peek(ctx, crypto.HashToken(rawTicket), uc.clock.Now())
++	if err != nil {
++		if errors.Is(err, domain.ErrNotFound) {
++			return domain.RegistrationTicket{}, domain.ErrInvalidToken
++		}
++		return domain.RegistrationTicket{}, err
++	}
++	return ticket, nil
++}
++
++func (uc *RegisterUser) Execute(ctx context.Context, in RegisterInput) error {
+ 	if err := uc.captcha.Verify(ctx, in.CaptchaToken, in.RemoteIP); err != nil {
+ 		return err
+ 	}
+@@ -70,6 +169,11 @@ func (uc *RegisterUser) Execute(ctx context.Context, in RegisterInput) error {
+ 		return err
+ 	}
+ 
++	ticket, err := uc.PeekTicket(ctx, in.Ticket)
++	if err != nil {
++		return err
++	}
++
+ 	exists, err := uc.users.ExistsByEmail(ctx, email)
+ 	if err != nil {
+ 		return err
+@@ -84,6 +188,17 @@ func (uc *RegisterUser) Execute(ctx context.Context, in RegisterInput) error {
+ 	}
+ 
+ 	now := uc.clock.Now()
++	consumed, err := uc.tickets.Consume(ctx, crypto.HashToken(in.Ticket), now)
++	if err != nil {
++		if errors.Is(err, domain.ErrNotFound) {
++			return domain.ErrInvalidToken
++		}
++		return err
++	}
++	if consumed.ClientID != ticket.ClientID {
++		return domain.ErrInvalidToken
++	}
++
+ 	userID, err := uc.users.Create(ctx, domain.User{
+ 		Email:        email,
+ 		PasswordHash: hash,
+@@ -96,16 +211,26 @@ func (uc *RegisterUser) Execute(ctx context.Context, in RegisterInput) error {
+ 		return err
+ 	}
+ 
++	if err := uc.accesses.Upsert(ctx, domain.UserAppAccess{
++		UserID:      userID,
++		ClientID:    consumed.ClientID,
++		EntryDomain: "",
++		FirstSeenAt: now,
++		LastSeenAt:  now,
++	}); err != nil {
++		return err
++	}
++
+ 	rawToken, err := crypto.RandomToken(32)
+ 	if err != nil {
+ 		return err
+ 	}
+-	token := domain.EmailVerificationToken{
++	verifyToken := domain.EmailVerificationToken{
+ 		Token:     rawToken,
+ 		UserID:    userID,
+ 		ExpiresAt: now.Add(emailVerifyTTL),
+ 	}
+-	if err := uc.tokens.CreateEmailVerificationToken(ctx, token, crypto.HashToken(rawToken)); err != nil {
++	if err := uc.tokens.CreateEmailVerificationToken(ctx, verifyToken, crypto.HashToken(rawToken)); err != nil {
+ 		return err
+ 	}
+ 
+diff --git a/internal/usecase/register_test.go b/internal/usecase/register_test.go
+new file mode 100644
+index 0000000..d2506fd
+--- /dev/null
++++ b/internal/usecase/register_test.go
+@@ -0,0 +1,312 @@
++package usecase
++
++import (
++	"context"
++	"errors"
++	"testing"
++	"time"
++
++	"github.com/taviani/kde-auth/internal/domain"
++	"github.com/taviani/kde-auth/internal/port"
++)
++
++type frozenClock struct{ t time.Time }
++
++func (c frozenClock) Now() time.Time { return c.t }
++
++type stubHasher struct{}
++
++func (stubHasher) Hash(_ context.Context, p domain.PlainPassword) (domain.PasswordHash, error) {
++	return domain.PasswordHash("h:" + string(p)), nil
++}
++
++func (stubHasher) Verify(hash domain.PasswordHash, p domain.PlainPassword) bool {
++	return hash == domain.PasswordHash("h:"+string(p))
++}
++
++type stubIssuer struct{ url string }
++
++func (s stubIssuer) Issuer() string { return s.url }
++func (stubIssuer) AccessToken(context.Context, port.AccessClaims) (string, error) {
++	return "", nil
++}
++func (stubIssuer) ParseAccessToken(context.Context, string) (port.AccessClaims, error) {
++	return port.AccessClaims{}, nil
++}
++func (stubIssuer) JWKS(context.Context) (map[string]any, error) { return nil, nil }
++
++type memClients struct{ byID map[domain.ClientID]domain.OAuthClient }
++
++func (m *memClients) ByClientID(_ context.Context, id domain.ClientID) (domain.OAuthClient, error) {
++	c, ok := m.byID[id]
++	if !ok {
++		return domain.OAuthClient{}, domain.ErrNotFound
++	}
++	return c, nil
++}
++func (m *memClients) List(context.Context) ([]domain.OAuthClient, error) { return nil, nil }
++func (m *memClients) Upsert(context.Context, domain.OAuthClient) error   { return nil }
++func (m *memClients) UpdateAccessMode(context.Context, domain.ClientID, domain.AccessMode) error {
++	return nil
++}
++
++type memTickets struct {
++	byHash map[string]domain.RegistrationTicket
++}
++
++func (m *memTickets) Create(_ context.Context, ticket domain.RegistrationTicket, tokenHash string) error {
++	if m.byHash == nil {
++		m.byHash = map[string]domain.RegistrationTicket{}
++	}
++	m.byHash[tokenHash] = ticket
++	return nil
++}
++
++func (m *memTickets) Peek(_ context.Context, tokenHash string, at time.Time) (domain.RegistrationTicket, error) {
++	t, ok := m.byHash[tokenHash]
++	if !ok {
++		return domain.RegistrationTicket{}, domain.ErrNotFound
++	}
++	if t.UsedAt != nil || !at.Before(t.ExpiresAt) {
++		return domain.RegistrationTicket{}, domain.ErrInvalidToken
++	}
++	return t, nil
++}
++
++func (m *memTickets) Consume(_ context.Context, tokenHash string, at time.Time) (domain.RegistrationTicket, error) {
++	t, err := m.Peek(context.Background(), tokenHash, at)
++	if err != nil {
++		return domain.RegistrationTicket{}, err
++	}
++	used := at
++	t.UsedAt = &used
++	m.byHash[tokenHash] = t
++	return t, nil
++}
++
++func publicAccessClient() domain.OAuthClient {
++	return domain.OAuthClient{
++		ClientID:                "web-app",
++		ClientSecretHash:        "h:super-secret-16",
++		Name:                    "Web",
++		RedirectURIs:            []string{"https://app.example/callback"},
++		AccessMode:              domain.AccessModePublic,
++		TokenEndpointAuthMethod: domain.TokenAuthClientSecretPost,
++	}
++}
++
++func TestIssueRegisterTicketRejectsPublicAndInviteOnlyClients(t *testing.T) {
++	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
++	clients := &memClients{byID: map[domain.ClientID]domain.OAuthClient{
++		"web-app": publicAccessClient(),
++		"mobile": {
++			ClientID:                "mobile",
++			Name:                    "Mobile",
++			RedirectURIs:            []string{"app://cb"},
++			AccessMode:              domain.AccessModePublic,
++			TokenEndpointAuthMethod: domain.TokenAuthNone,
++		},
++		"private": {
++			ClientID:                "private",
++			ClientSecretHash:        "h:super-secret-16",
++			Name:                    "Private",
++			RedirectURIs:            []string{"https://app.example/callback"},
++			AccessMode:              domain.AccessModeInviteOnly,
++			TokenEndpointAuthMethod: domain.TokenAuthClientSecretPost,
++		},
++	}}
++	tickets := &memTickets{}
++	uc := NewIssueRegisterTicket(clients, tickets, stubHasher{}, stubIssuer{url: "https://auth.example"}, frozenClock{t: now}, true)
++
++	if _, err := uc.Execute(context.Background(), IssueRegisterTicketInput{ClientID: "mobile", ClientSecret: ""}); !errors.Is(err, domain.ErrInvalidClient) {
++		t.Fatalf("public client: %v", err)
++	}
++	if _, err := uc.Execute(context.Background(), IssueRegisterTicketInput{ClientID: "private", ClientSecret: "super-secret-16"}); !errors.Is(err, domain.ErrInviteOnlyRegistration) {
++		t.Fatalf("invite-only: %v", err)
++	}
++	if _, err := uc.Execute(context.Background(), IssueRegisterTicketInput{ClientID: "web-app", ClientSecret: "wrong"}); !errors.Is(err, domain.ErrInvalidClient) {
++		t.Fatalf("bad secret: %v", err)
++	}
++	got, err := uc.Execute(context.Background(), IssueRegisterTicketInput{ClientID: "web-app", ClientSecret: "super-secret-16"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.Ticket == "" || got.ExpiresIn != 600 {
++		t.Fatalf("ticket result: %+v", got)
++	}
++}
++
++type memUsers struct {
++	byEmail map[domain.Email]domain.User
++	nextID  int
++}
++
++func (m *memUsers) Create(_ context.Context, user domain.User) (domain.UserID, error) {
++	m.nextID++
++	id := domain.UserID("user-1")
++	user.ID = id
++	if m.byEmail == nil {
++		m.byEmail = map[domain.Email]domain.User{}
++	}
++	m.byEmail[user.Email] = user
++	return id, nil
++}
++func (m *memUsers) ByEmail(_ context.Context, email domain.Email) (domain.User, error) {
++	u, ok := m.byEmail[email]
++	if !ok {
++		return domain.User{}, domain.ErrNotFound
++	}
++	return u, nil
++}
++func (m *memUsers) ByID(context.Context, domain.UserID) (domain.User, error) {
++	return domain.User{}, domain.ErrNotFound
++}
++func (m *memUsers) MarkEmailVerified(context.Context, domain.UserID, time.Time) error { return nil }
++func (m *memUsers) UpdatePassword(context.Context, domain.UserID, domain.PasswordHash, time.Time) error {
++	return nil
++}
++func (m *memUsers) ExistsByEmail(_ context.Context, email domain.Email) (bool, error) {
++	_, ok := m.byEmail[email]
++	return ok, nil
++}
++
++type memAccesses struct {
++	granted []domain.UserAppAccess
++}
++
++func (m *memAccesses) Upsert(_ context.Context, access domain.UserAppAccess) error {
++	m.granted = append(m.granted, access)
++	return nil
++}
++func (m *memAccesses) HasAccess(context.Context, domain.UserID, domain.ClientID) (bool, error) {
++	return false, nil
++}
++
++type memTokens struct{}
++
++func (memTokens) CreateAuthorizationCode(context.Context, domain.AuthorizationCode, string) error {
++	return nil
++}
++func (memTokens) ConsumeAuthorizationCode(context.Context, string, time.Time) (domain.AuthorizationCode, error) {
++	return domain.AuthorizationCode{}, domain.ErrNotFound
++}
++func (memTokens) CreateRefreshToken(context.Context, domain.RefreshToken, string) error { return nil }
++func (memTokens) ConsumeRefreshToken(context.Context, string, time.Time) (domain.RefreshToken, error) {
++	return domain.RefreshToken{}, domain.ErrNotFound
++}
++func (memTokens) RevokeRefreshToken(context.Context, string, time.Time) error { return nil }
++func (memTokens) CreateEmailVerificationToken(context.Context, domain.EmailVerificationToken, string) error {
++	return nil
++}
++func (memTokens) ConsumeEmailVerificationToken(context.Context, string, time.Time) (domain.EmailVerificationToken, error) {
++	return domain.EmailVerificationToken{}, domain.ErrNotFound
++}
++func (memTokens) CreatePasswordResetToken(context.Context, domain.PasswordResetToken, string) error {
++	return nil
++}
++func (memTokens) ConsumePasswordResetToken(context.Context, string, time.Time) (domain.PasswordResetToken, error) {
++	return domain.PasswordResetToken{}, domain.ErrNotFound
++}
++
++type stubMailer struct{}
++
++func (stubMailer) SendVerification(context.Context, domain.Email, string) error { return nil }
++func (stubMailer) SendPasswordReset(context.Context, domain.Email, string) error {
++	return nil
++}
++func (stubMailer) SendInvite(context.Context, domain.Email, string, string) error { return nil }
++
++func TestRegisterUserRequiresTicket(t *testing.T) {
++	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
++	tickets := &memTickets{byHash: map[string]domain.RegistrationTicket{}}
++	users := &memUsers{}
++	accesses := &memAccesses{}
++	uc := NewRegisterUser(users, tickets, accesses, stubHasher{}, memTokens{}, stubMailer{}, port.NoopCaptcha{}, frozenClock{t: now}, stubIssuer{url: "https://auth.example"}, true)
++
++	err := uc.Execute(context.Background(), RegisterInput{
++		Email:    "a@example.com",
++		Password: "twelvechars!!",
++		Ticket:   "",
++	})
++	if !errors.Is(err, domain.ErrInvalidToken) {
++		t.Fatalf("empty ticket: %v", err)
++	}
++
++	issue := NewIssueRegisterTicket(&memClients{byID: map[domain.ClientID]domain.OAuthClient{"web-app": publicAccessClient()}}, tickets, stubHasher{}, stubIssuer{url: "https://auth.example"}, frozenClock{t: now}, true)
++	issued, err := issue.Execute(context.Background(), IssueRegisterTicketInput{ClientID: "web-app", ClientSecret: "super-secret-16"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := uc.Execute(context.Background(), RegisterInput{
++		Email:    "a@example.com",
++		Password: "twelvechars!!",
++		Ticket:   issued.Ticket,
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if len(accesses.granted) != 1 || accesses.granted[0].ClientID != "web-app" {
++		t.Fatalf("access: %+v", accesses.granted)
++	}
++	if err := uc.Execute(context.Background(), RegisterInput{
++		Email:    "b@example.com",
++		Password: "twelvechars!!",
++		Ticket:   issued.Ticket,
++	}); !errors.Is(err, domain.ErrInvalidToken) {
++		t.Fatalf("replay ticket: %v", err)
++	}
++}
++
++func TestAdminDeleteRejectsSelfAndAdmins(t *testing.T) {
++	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
++	repo := &memAdminUsers{byID: map[domain.UserID]domain.User{
++		"admin": {ID: "admin", Role: domain.RoleAdmin, Email: "admin@example.com"},
++		"other-admin": {ID: "other-admin", Role: domain.RoleAdmin, Email: "a2@example.com"},
++		"user":  {ID: "user", Role: domain.RoleUser, Email: "u@example.com"},
++	}}
++	uc := NewAdminUsers(repo, frozenClock{t: now})
++	actor := repo.byID["admin"]
++	if err := uc.Delete(context.Background(), actor, "admin"); err == nil {
++		t.Fatal("expected self-delete to fail")
++	}
++	if err := uc.Delete(context.Background(), actor, "other-admin"); err == nil {
++		t.Fatal("expected admin delete to fail")
++	}
++	if err := uc.Delete(context.Background(), actor, "user"); err != nil {
++		t.Fatal(err)
++	}
++	if _, ok := repo.byID["user"]; ok {
++		t.Fatal("user should be deleted")
++	}
++}
++
++type memAdminUsers struct {
++	byID map[domain.UserID]domain.User
++}
++
++func (m *memAdminUsers) List(context.Context, domain.UserListFilter) ([]domain.User, error) {
++	return nil, nil
++}
++func (m *memAdminUsers) Count(context.Context, domain.UserListFilter) (int, error) { return 0, nil }
++func (m *memAdminUsers) Stats(context.Context, time.Time) (domain.UserStats, error) {
++	return domain.UserStats{}, nil
++}
++func (m *memAdminUsers) ByID(_ context.Context, id domain.UserID) (domain.User, error) {
++	u, ok := m.byID[id]
++	if !ok {
++		return domain.User{}, domain.ErrNotFound
++	}
++	return u, nil
++}
++func (m *memAdminUsers) SetStatus(context.Context, domain.UserID, domain.UserStatus, time.Time) error {
++	return nil
++}
++func (m *memAdminUsers) Delete(_ context.Context, id domain.UserID) error {
++	if _, ok := m.byID[id]; !ok {
++		return domain.ErrNotFound
++	}
++	delete(m.byID, id)
++	return nil
++}
++func (m *memAdminUsers) ListClientIDsForUsers(context.Context, []domain.UserID) (map[domain.UserID][]domain.ClientID, error) {
++	return map[domain.UserID][]domain.ClientID{}, nil
++}
+diff --git a/migrations/000006_registration_tickets.sql b/migrations/000006_registration_tickets.sql
+new file mode 100644
+index 0000000..7838758
+--- /dev/null
++++ b/migrations/000006_registration_tickets.sql
+@@ -0,0 +1,14 @@
++CREATE TABLE registration_tickets (
++    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++    token_hash TEXT NOT NULL,
++    client_id TEXT NOT NULL,
++    expires_at TIMESTAMPTZ NOT NULL,
++    used_at TIMESTAMPTZ,
++    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++CREATE UNIQUE INDEX registration_tickets_token_hash_idx
++    ON registration_tickets (token_hash);
++
++CREATE INDEX registration_tickets_expires_at_idx
++    ON registration_tickets (expires_at);
+-- 
+2.43.0
+

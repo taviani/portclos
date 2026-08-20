@@ -14,22 +14,22 @@
 
 ## Companion: kde-auth (issuer)
 
-Le service auth émet déjà des `refresh_token` et gère `grant_type=refresh_token`, mais **rejette** le scope `offline_access` → le login Portclos échoue tant que ce n’est pas mergé.
+`offline_access` is already on kde-auth `main`. Remaining issuer hardening (ticketed `/register`, login rate-limit, `/admin` 404, user delete, `GET /` 404) lives in:
 
-- Issue tracker : https://github.com/taviani/kde-auth/issues/22  
-- Patch à appliquer : [`patches/0001-Accept-offline_access-scope-for-native-refresh-sessi.patch`](patches/0001-Accept-offline_access-scope-for-native-refresh-sessi.patch)
+[`patches/0002-harden-issuer-ticketed-registration.patch`](patches/0002-harden-issuer-ticketed-registration.patch)
 
 ```bash
 cd /path/to/kde-auth
-git checkout -b feat/offline-access-scope
-git am /path/to/portclos/docs/product/patches/0001-Accept-offline_access-scope-for-native-refresh-sessi.patch
+git checkout -b feat/issuer-fortress
+git am /path/to/portclos/docs/product/patches/0002-harden-issuer-ticketed-registration.patch
 git push -u origin HEAD
-gh pr create --base main --title "Accept offline_access scope for native refresh sessions"
 ```
+
+After deploy: Turnstile keys are required in production. Invite-only Portclos is unchanged. Leftover accounts with no app can be suspended or deleted in `/admin/users` (log in first, then open `/admin`).
 
 ### Client OAuth `portclos` (admin auth)
 
 - `token_endpoint_auth_method=none` (public + PKCE)
 - Redirect : `portclos://auth/callback`
-- Mode invite_only si besoin
-- Après deploy auth + merge Portclos : **une** connexion TestFlight pour stocker le refresh
+- Mode invite_only
+- After deploy auth + merge Portclos : **one** TestFlight login to store the refresh token
