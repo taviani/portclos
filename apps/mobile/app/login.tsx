@@ -13,6 +13,7 @@ import {
   exchangeCodeForToken,
   isAuthConfigured,
   redirectUri,
+  setPkceVerifier,
 } from '@/lib/auth';
 import { hasDisplayName } from '@/lib/displayName';
 import { appEntryHref } from '@/lib/navigation';
@@ -60,6 +61,7 @@ export default function LoginScreen() {
           code,
           codeVerifier: request.codeVerifier!,
         });
+        await setPkceVerifier(null);
         await setSessionTokens(bundle);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'login failed');
@@ -76,11 +78,14 @@ export default function LoginScreen() {
         setError('Configure EXPO_PUBLIC_AUTH_ISSUER in apps/mobile/.env');
         return;
       }
-      await promptAsync();
+      if (request?.codeVerifier) {
+        await setPkceVerifier(request.codeVerifier);
+      }
+      await promptAsync({ createTask: false });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'login failed');
     }
-  }, [promptAsync]);
+  }, [promptAsync, request]);
 
   const onLocalDev = useCallback(async () => {
     setBusy(true);

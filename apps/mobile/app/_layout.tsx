@@ -143,6 +143,7 @@ function RootStack() {
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
       <Stack.Screen name="display-name" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false, title: '' }} />
       <Stack.Screen
@@ -168,12 +169,12 @@ function AuthGate({ children }: { children: ReactNode }) {
   }
 
   const root = segments[0];
-  const onLogin = root === 'login';
+  const onAuth = root === 'login' || root === 'auth';
   // Root `/` is handled by app/index.tsx; do not fight that redirect here.
   const onIndex = root === undefined || root === 'index';
 
   let loginRedirect: ReactNode = null;
-  if (token && onLogin) {
+  if (token && onAuth) {
     const profilePending = me.isLoading || (me.isFetching && !me.data);
     if (!profilePending) {
       const needsDisplayName = me.isSuccess && me.data ? !hasDisplayName(me.data) : false;
@@ -185,7 +186,7 @@ function AuthGate({ children }: { children: ReactNode }) {
 
   return (
     <>
-      {!token && !onLogin && !onIndex ? <Redirect href="/login" /> : null}
+      {!token && !onAuth && !onIndex ? <Redirect href="/login" /> : null}
       {loginRedirect}
       {children}
     </>
@@ -206,7 +207,7 @@ function DisplayNameGate({ children }: { children: ReactNode }) {
   const onIndex = root === undefined || root === 'index';
   const onDisplayName = root === 'display-name';
   // Let login / cold-start index finish their own redirects first.
-  if (root === 'login' || onIndex) {
+  if (root === 'login' || root === 'auth' || onIndex) {
     return <>{children}</>;
   }
 
