@@ -52,6 +52,48 @@ export function apiBaseUrl(): string {
   return (extra?.apiUrl ?? 'http://localhost:8080').replace(/\/$/, '');
 }
 
+export class NetworkError extends Error {
+  readonly code = 'network' as const;
+  constructor() {
+    super('Pas de réseau');
+    this.name = 'NetworkError';
+  }
+}
+
+export function isNetworkError(err: unknown): boolean {
+  return err instanceof NetworkError;
+}
+
+function isFetchFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  const msg = err.message.toLowerCase();
+  return (
+    err.name === 'TypeError' ||
+    msg.includes('network request failed') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('network error')
+  );
+}
+
+/** Map a dropped link to NetworkError; rethrow anything else. */
+export function throwNetworkOrOriginal(err: unknown): never {
+  if (isNetworkError(err) || isFetchFailure(err)) {
+    throw new NetworkError();
+  }
+  throw err;
+}
+
+/** fetch that maps a dropped link to NetworkError instead of a TypeError. */
+export async function send(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    throwNetworkOrOriginal(err);
+  }
+}
+
 function withBearer(init: RequestInit | undefined, accessToken: string): RequestInit {
   const headers = new Headers(init?.headers);
   headers.set('Authorization', `Bearer ${accessToken}`);
@@ -60,12 +102,12 @@ function withBearer(init: RequestInit | undefined, accessToken: string): Request
 
 export async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${apiBaseUrl()}${path}`;
-  let res = await fetch(url, init);
+  let res = await send(url, init);
 
   if (res.status === 401 && tokenRefreshHandler) {
     const next = await tokenRefreshHandler();
     if (next) {
-      res = await fetch(url, withBearer(init, next));
+      res = await send(url, withBearer(init, next));
     }
   }
 

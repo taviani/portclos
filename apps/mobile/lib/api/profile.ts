@@ -1,6 +1,6 @@
 import { authIssuer } from '@/lib/auth';
 
-import { apiBaseUrl, authHeaders, getJSON } from '@/lib/api/http';
+import { apiBaseUrl, authHeaders, getJSON, send } from '@/lib/api/http';
 import { uploadPhotoMultipart } from '@/lib/api/upload';
 
 export type MeProfile = {
@@ -38,7 +38,7 @@ export async function uploadAvatar(
 }
 
 export async function deleteAvatar(accessToken: string): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/me/avatar`, {
+  const res = await send(`${apiBaseUrl()}/me/avatar`, {
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });
@@ -59,7 +59,7 @@ export async function changePassword(
     new_password_confirm: string;
   },
 ): Promise<void> {
-  const res = await fetch(`${authIssuer()}/account/password`, {
+  const res = await send(`${authIssuer()}/account/password`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,

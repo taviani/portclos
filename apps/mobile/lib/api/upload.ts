@@ -4,6 +4,7 @@ import {
   apiBaseUrl,
   authHeaders,
   notifyUnauthorized,
+  throwNetworkOrOriginal,
   tryRefreshAccessToken,
 } from '@/lib/api/http';
 
@@ -29,14 +30,18 @@ export async function uploadMultipart<T>(
 
   const uploadOnce = async (token: string) => {
     const file = new File(uri);
-    return file.upload(`${apiBaseUrl()}${path}`, {
-      httpMethod: 'POST',
-      uploadType: UploadType.MULTIPART,
-      fieldName,
-      mimeType,
-      headers: authHeaders(token) as Record<string, string>,
-      ...(opts?.parameters ? { parameters: opts.parameters } : {}),
-    });
+    try {
+      return await file.upload(`${apiBaseUrl()}${path}`, {
+        httpMethod: 'POST',
+        uploadType: UploadType.MULTIPART,
+        fieldName,
+        mimeType,
+        headers: authHeaders(token) as Record<string, string>,
+        ...(opts?.parameters ? { parameters: opts.parameters } : {}),
+      });
+    } catch (err) {
+      throwNetworkOrOriginal(err);
+    }
   };
 
   let result = await uploadOnce(accessToken);

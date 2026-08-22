@@ -2,6 +2,8 @@ import * as AuthSession from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 
+import { isNetworkError, send } from '@/lib/api/http';
+
 WebBrowser.maybeCompleteAuthSession();
 
 const ACCESS_KEY = 'portclos.access_token';
@@ -169,7 +171,7 @@ type TokenEndpointJson = {
 };
 
 async function tokenRequest(body: URLSearchParams): Promise<TokenBundle> {
-  const res = await fetch(discovery().tokenEndpoint!, {
+  const res = await send(discovery().tokenEndpoint!, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
@@ -244,7 +246,10 @@ export async function ensureFreshAccessToken(): Promise<string | null> {
         await setRefreshToken(bundle.refreshToken);
       }
       return bundle.accessToken;
-    } catch {
+    } catch (err) {
+      if (isNetworkError(err)) {
+        throw err;
+      }
       await clearAllTokens();
       return null;
     } finally {

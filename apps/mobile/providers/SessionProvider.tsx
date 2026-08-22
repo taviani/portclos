@@ -10,11 +10,12 @@ import {
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
-import { setTokenRefreshHandler, setUnauthorizedHandler } from '@/lib/api/http';
+import { isNetworkError, setTokenRefreshHandler, setUnauthorizedHandler } from '@/lib/api/http';
 import { queryClient } from '@/lib/queryClient';
 import {
   clearAllTokens,
   ensureFreshAccessToken,
+  getAccessToken,
   setAccessToken,
   setCurrentHouseId,
   setRefreshToken,
@@ -72,6 +73,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     void (async () => {
       try {
         setToken(await ensureFreshAccessToken());
+      } catch (err) {
+        if (isNetworkError(err)) {
+          setToken(await getAccessToken());
+        }
       } finally {
         setReady(true);
       }
@@ -83,11 +88,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const onChange = (state: AppStateStatus) => {
       if (state !== 'active') return;
       void (async () => {
-        const next = await ensureFreshAccessToken();
-        if (next !== tokenRef.current) {
-          setToken(next);
-          if (!next) {
-            queryClient.clear();
+        try {
+          const next = await ensureFreshAccessToken();
+          if (next !== tokenRef.current) {
+            setToken(next);
+            if (!next) {
+              queryClient.clear();
+            }
+          }
+        } catch (err) {
+          if (isNetworkError(err)) {
+            return;
           }
         }
       })();

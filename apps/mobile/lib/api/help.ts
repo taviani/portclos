@@ -1,4 +1,4 @@
-import { apiBaseUrl, authHeaders, getJSON } from '@/lib/api/http';
+import { apiBaseUrl, authHeaders, getJSON, send } from '@/lib/api/http';
 import { uploadFileMultipart, uploadPhotoMultipart } from '@/lib/api/upload';
 
 export type HelpPhoto = {
@@ -81,7 +81,7 @@ export async function deleteHelpArticle(
   accessToken: string,
   articleId: string,
 ): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/help/${articleId}`, {
+  const res = await send(`${apiBaseUrl()}/help/${articleId}`, {
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });
@@ -103,7 +103,7 @@ export async function deleteHelpPhoto(
   accessToken: string,
   photoId: string,
 ): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/help-photos/${photoId}`, {
+  const res = await send(`${apiBaseUrl()}/help-photos/${photoId}`, {
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });
@@ -132,7 +132,7 @@ export async function deleteHelpDocument(
   accessToken: string,
   documentId: string,
 ): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/help-documents/${documentId}`, {
+  const res = await send(`${apiBaseUrl()}/help-documents/${documentId}`, {
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });
