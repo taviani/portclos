@@ -1,4 +1,4 @@
-import { apiBaseUrl, authHeaders, getJSON } from '@/lib/api/http';
+import { apiBaseUrl, authHeaders, getJSON, send } from '@/lib/api/http';
 
 export type GuestRelation = 'ami' | 'conjoint' | 'enfant' | 'famille' | 'autre' | '';
 
@@ -140,7 +140,7 @@ export async function updateOccupation(
 }
 
 export async function deleteOccupation(accessToken: string, occupationId: string): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/occupations/${occupationId}`, {
+  const res = await send(`${apiBaseUrl()}/occupations/${occupationId}`, {
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });

@@ -1,4 +1,4 @@
-import { apiBaseUrl, authHeaders, getJSON } from '@/lib/api/http';
+import { apiBaseUrl, authHeaders, getJSON, send } from '@/lib/api/http';
 import { uploadPhotoMultipart } from '@/lib/api/upload';
 
 export type BlogPhoto = {
@@ -84,7 +84,7 @@ export async function fetchBlogPost(
 }
 
 export async function deleteBlogPost(accessToken: string, postId: string): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/posts/${postId}`, {
+  const res = await send(`${apiBaseUrl()}/posts/${postId}`, {
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });
@@ -125,7 +125,7 @@ export async function deleteBlogComment(
   accessToken: string,
   commentId: string,
 ): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/comments/${commentId}`, {
+  const res = await send(`${apiBaseUrl()}/comments/${commentId}`, {
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });
@@ -153,7 +153,7 @@ export async function clearBlogReaction(
   accessToken: string,
   postId: string,
 ): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/posts/${postId}/reactions`, {
+  const res = await send(`${apiBaseUrl()}/posts/${postId}/reactions`, {
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });

@@ -1,5 +1,7 @@
 import Constants from 'expo-constants';
 
+import { send } from '@/lib/api/http';
+
 export type ClientEventKind = 'error' | 'screen' | 'action';
 
 export type ClientEventInput = {
@@ -30,14 +32,14 @@ function eventsBaseUrl(): string {
 }
 
 /**
- * Posts a client event with raw fetch.
- * Intentionally does not use getJSON to avoid import cycles and error feedback loops.
+ * Posts a client event.
+ * Does not use getJSON to avoid 401/error feedback loops.
  */
 export async function postClientEvent(
   accessToken: string,
   event: ClientEventInput,
 ): Promise<ClientEventCreated> {
-  const res = await fetch(`${eventsBaseUrl()}/client-events`, {
+  const res = await send(`${eventsBaseUrl()}/client-events`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,

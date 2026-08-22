@@ -1,4 +1,4 @@
-import { apiBaseUrl, authHeaders, getJSON } from '@/lib/api/http';
+import { apiBaseUrl, authHeaders, getJSON, send } from '@/lib/api/http';
 import { uploadPhotoMultipart } from '@/lib/api/upload';
 
 export type ChecklistItemPhoto = {
@@ -86,7 +86,7 @@ export async function updateChecklistItem(
 }
 
 export async function deleteChecklistItem(accessToken: string, itemId: string): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/closing-checklist/items/${itemId}`, {
+  const res = await send(`${apiBaseUrl()}/closing-checklist/items/${itemId}`, {
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });
@@ -168,7 +168,7 @@ export async function uploadChecklistPhoto(
 }
 
 export async function deleteChecklistPhoto(accessToken: string, photoId: string): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/closing-photos/${photoId}`, {
+  const res = await send(`${apiBaseUrl()}/closing-photos/${photoId}`, {
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });
