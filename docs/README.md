@@ -4,8 +4,8 @@ Décisions produit et notes qui doivent vivre avec le code (pas seulement dans u
 
 | Fichier | Contenu |
 |---------|---------|
-| [product/auth-session.md](product/auth-session.md) | Session durable (refresh) + biométrie + patch kde-auth |
+| [product/auth-session.md](product/auth-session.md) | Session durable (refresh) + biométrie + Android « Found » + patches kde-auth |
 | [product/logging.md](product/logging.md) | Logs structurés API + events usage / Metabase |
-| [product/patches/](product/patches/) | Patch companion pour `kde-auth` (`offline_access`) |
+| [product/patches/](product/patches/) | Patches companion pour kde-auth (`offline_access`, page retour OAuth Android) |
 
 Quand une discussion aboutit à une décision : l’écrire ici via une PR.

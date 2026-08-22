@@ -34,6 +34,8 @@ export function redirectUri(): string {
   return AuthSession.makeRedirectUri({
     scheme: 'portclos',
     path: 'auth/callback',
+    // Standalone Android/iOS must use the custom scheme registered on the issuer.
+    native: 'portclos://auth/callback',
   });
 }
 

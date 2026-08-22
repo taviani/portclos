@@ -41,6 +41,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "test": "node --experimental-strip-types --test lib/authCallbackUrl.test.ts",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
