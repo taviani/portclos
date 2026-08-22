@@ -169,13 +169,12 @@ function AuthGate({ children }: { children: ReactNode }) {
   }
 
   const root = segments[0];
-  const onLogin = root === 'login';
-  const onAuthCallback = root === 'auth';
+  const onAuth = root === 'login' || root === 'auth';
   // Root `/` is handled by app/index.tsx; do not fight that redirect here.
   const onIndex = root === undefined || root === 'index';
 
   let loginRedirect: ReactNode = null;
-  if (token && onLogin) {
+  if (token && onAuth) {
     const profilePending = me.isLoading || (me.isFetching && !me.data);
     if (!profilePending) {
       const needsDisplayName = me.isSuccess && me.data ? !hasDisplayName(me.data) : false;
@@ -187,9 +186,7 @@ function AuthGate({ children }: { children: ReactNode }) {
 
   return (
     <>
-      {!token && !onLogin && !onIndex && !onAuthCallback ? (
-        <Redirect href="/login" />
-      ) : null}
+      {!token && !onAuth && !onIndex ? <Redirect href="/login" /> : null}
       {loginRedirect}
       {children}
     </>

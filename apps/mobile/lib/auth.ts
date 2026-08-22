@@ -7,6 +7,7 @@ WebBrowser.maybeCompleteAuthSession();
 const ACCESS_KEY = 'portclos.access_token';
 const REFRESH_KEY = 'portclos.refresh_token';
 const HOUSE_KEY = 'portclos.current_house_id';
+const PKCE_KEY = 'portclos.pkce_verifier';
 
 /** Refresh a bit before real exp so API calls rarely see a dead JWT. */
 const EXPIRY_SKEW_MS = 60_000;
@@ -34,7 +35,6 @@ export function redirectUri(): string {
   return AuthSession.makeRedirectUri({
     scheme: 'portclos',
     path: 'auth/callback',
-    // Standalone Android/iOS must use the custom scheme registered on the issuer.
     native: 'portclos://auth/callback',
   });
 }
@@ -142,6 +142,23 @@ export async function setCurrentHouseId(id: string | null): Promise<void> {
     return;
   }
   await SecureStore.setItemAsync(HOUSE_KEY, id);
+}
+
+/** Persist PKCE verifier so /auth/callback can finish login if the in-memory request is gone. */
+export async function setPkceVerifier(verifier: string | null): Promise<void> {
+  if (!verifier) {
+    await SecureStore.deleteItemAsync(PKCE_KEY);
+    return;
+  }
+  await SecureStore.setItemAsync(PKCE_KEY, verifier);
+}
+
+export async function takePkceVerifier(): Promise<string | null> {
+  const verifier = await SecureStore.getItemAsync(PKCE_KEY);
+  if (verifier) {
+    await SecureStore.deleteItemAsync(PKCE_KEY);
+  }
+  return verifier;
 }
 
 type TokenEndpointJson = {

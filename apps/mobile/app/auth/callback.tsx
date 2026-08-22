@@ -1,51 +1,39 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Redirect, router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Button, Text } from 'react-native-paper';
 
-import { useMe } from '@/hooks/useHouses';
-import { completeAuthorization, parseAuthCallbackParams } from '@/lib/authCallback';
-import { hasDisplayName } from '@/lib/displayName';
-import { appEntryHref } from '@/lib/navigation';
+import { exchangeCodeForToken, takePkceVerifier } from '@/lib/auth';
 import { useSession } from '@/providers/SessionProvider';
 import { useAppTheme } from '@/theme/paper';
 
-/**
- * OAuth redirect target (`portclos://auth/callback`).
- * Android Chrome often cannot auto-follow the 302, so the user taps the
- * page link (historically the word "Found") and lands here.
- */
+/** Deep-link target for `portclos://auth/callback`. Session gate handles the rest. */
 export default function AuthCallbackScreen() {
   const theme = useAppTheme();
   const { token, ready, setSessionTokens } = useSession();
-  const params = useLocalSearchParams<{ code?: string | string[]; state?: string | string[] }>();
-  const me = useMe();
+  const params = useLocalSearchParams<{ code?: string | string[] }>();
   const [error, setError] = useState<string | null>(null);
-
-  const code = params.code;
-  const state = params.state;
+  const code = Array.isArray(params.code) ? params.code[0] : params.code;
 
   useEffect(() => {
     if (!ready || token) {
       return;
     }
-    const parsed = parseAuthCallbackParams({ code, state });
-    if (!parsed) {
+    if (!code) {
       setError('missing authorization code');
       return;
     }
     let cancelled = false;
     void (async () => {
       try {
-        const bundle = await completeAuthorization(parsed);
-        if (cancelled) {
-          return;
+        const codeVerifier = await takePkceVerifier();
+        if (!codeVerifier) {
+          throw new Error('login session expired — retry');
         }
-        if (!bundle) {
-          setError('login session expired — retry');
-          return;
+        const bundle = await exchangeCodeForToken({ code, codeVerifier });
+        if (!cancelled) {
+          await setSessionTokens(bundle);
         }
-        await setSessionTokens(bundle);
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'login failed');
@@ -55,20 +43,7 @@ export default function AuthCallbackScreen() {
     return () => {
       cancelled = true;
     };
-  }, [ready, token, code, state, setSessionTokens]);
-
-  if (token) {
-    if (me.isLoading || (me.isFetching && !me.data)) {
-      return (
-        <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-          <ActivityIndicator animating color={theme.colors.primary} />
-        </View>
-      );
-    }
-    const needsDisplayName =
-      me.isSuccess && me.data ? !hasDisplayName(me.data) : false;
-    return <Redirect href={appEntryHref({ loggedIn: true, needsDisplayName })} />;
-  }
+  }, [ready, token, code, setSessionTokens]);
 
   return (
     <View style={[styles.center, { backgroundColor: theme.colors.background }]}>

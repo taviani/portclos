@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import { Redirect } from 'expo-router';
 import { ActivityIndicator, Button, Text } from 'react-native-paper';
@@ -10,10 +10,11 @@ import {
   AUTH_SCOPES,
   authClientId,
   discovery,
+  exchangeCodeForToken,
   isAuthConfigured,
   redirectUri,
+  setPkceVerifier,
 } from '@/lib/auth';
-import { completeAuthorization, persistLoginChallenge } from '@/lib/authCallback';
 import { hasDisplayName } from '@/lib/displayName';
 import { appEntryHref } from '@/lib/navigation';
 import { useSession } from '@/providers/SessionProvider';
@@ -43,26 +44,8 @@ export default function LoginScreen() {
     setRedirect(redirectUri());
   }, []);
 
-  const finishWithCode = useCallback(
-    async (code: string, state: string) => {
-      setBusy(true);
-      setError(null);
-      try {
-        const bundle = await completeAuthorization({ code, state });
-        if (bundle) {
-          await setSessionTokens(bundle);
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'login failed');
-      } finally {
-        setBusy(false);
-      }
-    },
-    [setSessionTokens],
-  );
-
   useEffect(() => {
-    if (response?.type !== 'success') {
+    if (response?.type !== 'success' || !request?.codeVerifier) {
       return;
     }
     const code = response.params.code;
@@ -70,8 +53,23 @@ export default function LoginScreen() {
       setError('missing authorization code');
       return;
     }
-    void finishWithCode(code, response.params.state ?? '');
-  }, [response, finishWithCode]);
+    void (async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        const bundle = await exchangeCodeForToken({
+          code,
+          codeVerifier: request.codeVerifier!,
+        });
+        await setPkceVerifier(null);
+        await setSessionTokens(bundle);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'login failed');
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [response, request, setSessionTokens]);
 
   const onLogin = useCallback(async () => {
     setError(null);
@@ -80,24 +78,14 @@ export default function LoginScreen() {
         setError('Configure EXPO_PUBLIC_AUTH_ISSUER in apps/mobile/.env');
         return;
       }
-      if (!request?.codeVerifier || !request.state) {
-        setError('login is not ready yet');
-        return;
+      if (request?.codeVerifier) {
+        await setPkceVerifier(request.codeVerifier);
       }
-      await persistLoginChallenge({
-        codeVerifier: request.codeVerifier,
-        state: request.state,
-      });
-      const result = await promptAsync({
-        createTask: false,
-      });
-      if (result.type === 'success' && result.params?.code) {
-        await finishWithCode(result.params.code, result.params.state ?? '');
-      }
+      await promptAsync({ createTask: false });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'login failed');
     }
-  }, [promptAsync, request, finishWithCode]);
+  }, [promptAsync, request]);
 
   const onLocalDev = useCallback(async () => {
     setBusy(true);
@@ -174,19 +162,6 @@ export default function LoginScreen() {
       >
         Se connecter
       </Button>
-      {Platform.OS === 'android' ? (
-        <Text
-          variant="bodySmall"
-          style={{
-            color: theme.colors.onSurfaceVariant,
-            marginTop: 16,
-            lineHeight: 20,
-          }}
-        >
-          Si le navigateur affiche le mot « Found » ou ne se ferme pas, appuie
-          sur le lien pour revenir à Portclos.
-        </Text>
-      ) : null}
       {__DEV__ ? (
         <Button mode="text" onPress={onLocalDev} disabled={busy} style={{ marginTop: 12 }}>
           Mode local (AUTH_DISABLED)

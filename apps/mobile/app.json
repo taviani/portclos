@@ -24,20 +24,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.portclos.app",
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "category": ["BROWSABLE", "DEFAULT"],
-          "data": [
-            {
-              "scheme": "portclos",
-              "host": "auth",
-              "pathPrefix": "/callback"
-            }
-          ]
-        }
-      ]
+      "package": "com.portclos.app"
     },
     "web": {
       "bundler": "metro",
