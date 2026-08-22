@@ -25,6 +25,8 @@ gh pr create --base main --title "HTML return page for native OAuth redirects (A
 
 Sans ce patch, demander à l’utilisatrice **d’appuyer sur le mot « Found »** après login.
 
+Le durcissement issuer (août 2026 : `GET /` et `/admin` en 404, register par ticket) n’a **pas** changé `/authorize`. « Found » veut dire que l’authorize a **réussi** (compte + invite OK) puis 302 vers `portclos://…`. Un blocage fortress aurait montré 404 ou la page login `denied=1`, pas ce mot.
+
 ## Face ID / biométrie
 
 - **Face ID** = nom Apple (iOS uniquement).
