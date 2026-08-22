@@ -1,9 +1,5 @@
 # Session durable (refresh token)
 
-## Connexion Android (« Found »)
-
-Chrome Custom Tabs ne suit pas le 302 vers `portclos://auth/callback`. L’app termine le login sur `/auth/callback`. Patch issuer : [`patches/0002-Html-return-page-for-native-oauth-redirects.patch`](patches/0002-Html-return-page-for-native-oauth-redirects.patch).
-
 ## Face ID / biométrie
 
 - **Face ID** = nom Apple (iOS uniquement).
