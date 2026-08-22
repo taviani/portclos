@@ -11,7 +11,6 @@ import {
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { setTokenRefreshHandler, setUnauthorizedHandler } from '@/lib/api/http';
-import { completeAuthorization, subscribeAuthCallback } from '@/lib/authCallback';
 import { queryClient } from '@/lib/queryClient';
 import {
   clearAllTokens,
@@ -78,27 +77,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     })();
   }, []);
-
-  // Android Chrome often returns via custom-scheme intent while login.tsx
-  // has already unmounted (expo-router opened /auth/callback).
-  useEffect(() => {
-    if (token) {
-      return;
-    }
-    const sub = subscribeAuthCallback((params) => {
-      void (async () => {
-        try {
-          const bundle = await completeAuthorization(params);
-          if (bundle) {
-            await setSessionTokens(bundle);
-          }
-        } catch {
-          /* login screen / callback route surface the error */
-        }
-      })();
-    });
-    return () => sub.remove();
-  }, [token, setSessionTokens]);
 
   // Silent refresh when returning to the foreground.
   useEffect(() => {

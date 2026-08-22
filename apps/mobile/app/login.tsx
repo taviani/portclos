@@ -13,11 +13,7 @@ import {
   isAuthConfigured,
   redirectUri,
 } from '@/lib/auth';
-import {
-  completeAuthorization,
-  persistLoginChallenge,
-  subscribeAuthCallback,
-} from '@/lib/authCallback';
+import { completeAuthorization, persistLoginChallenge } from '@/lib/authCallback';
 import { hasDisplayName } from '@/lib/displayName';
 import { appEntryHref } from '@/lib/navigation';
 import { useSession } from '@/providers/SessionProvider';
@@ -66,13 +62,6 @@ export default function LoginScreen() {
   );
 
   useEffect(() => {
-    const sub = subscribeAuthCallback((params) => {
-      void finishWithCode(params.code, params.state);
-    });
-    return () => sub.remove();
-  }, [finishWithCode]);
-
-  useEffect(() => {
     if (response?.type !== 'success') {
       return;
     }
@@ -100,8 +89,6 @@ export default function LoginScreen() {
         state: request.state,
       });
       const result = await promptAsync({
-        // Keep the login Activity so the custom-scheme intent returns here
-        // instead of spawning a second task that drops PKCE state.
         createTask: false,
       });
       if (result.type === 'success' && result.params?.code) {
