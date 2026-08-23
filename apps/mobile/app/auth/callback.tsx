@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Button, Text } from 'react-native-paper';
 
-import { exchangeCodeForToken, takePkceVerifier } from '@/lib/auth';
+import {
+  exchangeCodeForToken,
+  isOAuthCallbackUrl,
+  parseOAuthCallbackUrl,
+  takePkceVerifier,
+} from '@/lib/auth';
 import { useSession } from '@/providers/SessionProvider';
 import { useAppTheme } from '@/theme/paper';
 
@@ -13,7 +19,25 @@ export default function AuthCallbackScreen() {
   const { token, ready, setSessionTokens } = useSession();
   const params = useLocalSearchParams<{ code?: string | string[] }>();
   const [error, setError] = useState<string | null>(null);
-  const code = Array.isArray(params.code) ? params.code[0] : params.code;
+  const paramCode = Array.isArray(params.code) ? params.code[0] : params.code;
+  const [code, setCode] = useState<string | undefined>(paramCode);
+
+  useEffect(() => {
+    if (paramCode) {
+      setCode(paramCode);
+      return;
+    }
+    void (async () => {
+      const initialUrl = await Linking.getInitialURL();
+      if (!initialUrl || !isOAuthCallbackUrl(initialUrl)) {
+        return;
+      }
+      const parsed = parseOAuthCallbackUrl(initialUrl);
+      if (parsed?.code) {
+        setCode(parsed.code);
+      }
+    })();
+  }, [paramCode]);
 
   useEffect(() => {
     if (!ready || token) {

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
+import * as Linking from 'expo-linking';
 import { Redirect } from 'expo-router';
 import { ActivityIndicator, Button, Text } from 'react-native-paper';
 
@@ -11,9 +12,13 @@ import {
   authClientId,
   discovery,
   exchangeCodeForToken,
+  hasPkceVerifier,
   isAuthConfigured,
+  isOAuthCallbackUrl,
+  parseOAuthCallbackUrl,
   redirectUri,
   setPkceVerifier,
+  takePkceVerifier,
 } from '@/lib/auth';
 import { hasDisplayName } from '@/lib/displayName';
 import { appEntryHref } from '@/lib/navigation';
@@ -28,6 +33,7 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [redirect, setRedirect] = useState('');
+  const exchangeStarted = useRef(false);
 
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {
@@ -44,32 +50,97 @@ export default function LoginScreen() {
     setRedirect(redirectUri());
   }, []);
 
-  useEffect(() => {
-    if (response?.type !== 'success' || !request?.codeVerifier) {
-      return;
-    }
-    const code = response.params.code;
-    if (!code) {
-      setError('missing authorization code');
-      return;
-    }
-    void (async () => {
+  const completeOAuthLogin = useCallback(
+    async (code: string, codeVerifier: string) => {
+      if (exchangeStarted.current) {
+        return;
+      }
+      exchangeStarted.current = true;
       setBusy(true);
       setError(null);
       try {
         const bundle = await exchangeCodeForToken({
           code,
-          codeVerifier: request.codeVerifier!,
+          codeVerifier,
         });
         await setPkceVerifier(null);
         await setSessionTokens(bundle);
       } catch (e) {
+        exchangeStarted.current = false;
         setError(e instanceof Error ? e.message : 'login failed');
       } finally {
         setBusy(false);
       }
+    },
+    [setSessionTokens],
+  );
+
+  const finishFromCallbackUrl = useCallback(
+    async (url: string, codeVerifierFromRequest?: string | null) => {
+      const parsed = parseOAuthCallbackUrl(url);
+      if (!parsed?.code) {
+        if (parsed?.error) {
+          setError(parsed.error);
+          await setPkceVerifier(null);
+        }
+        return;
+      }
+
+      let codeVerifier = codeVerifierFromRequest ?? undefined;
+      if (!codeVerifier) {
+        codeVerifier = (await takePkceVerifier()) ?? undefined;
+      }
+      if (!codeVerifier) {
+        setError('login session expired — try again');
+        return;
+      }
+
+      await completeOAuthLogin(parsed.code, codeVerifier);
+    },
+    [completeOAuthLogin],
+  );
+
+  useEffect(() => {
+    if (response?.type === 'error') {
+      setError(response.error?.message ?? 'login failed');
+      void setPkceVerifier(null);
+      return;
+    }
+    if (response?.type !== 'success') {
+      return;
+    }
+
+    const code = response.params.code;
+    if (code && request?.codeVerifier) {
+      void completeOAuthLogin(code, request.codeVerifier);
+      return;
+    }
+
+    void (async () => {
+      if (!(await hasPkceVerifier())) {
+        if (!code) {
+          setError('missing authorization code');
+        }
+        return;
+      }
+      const initialUrl = await Linking.getInitialURL();
+      if (initialUrl && isOAuthCallbackUrl(initialUrl)) {
+        await finishFromCallbackUrl(initialUrl, request?.codeVerifier);
+      } else if (!code) {
+        setError('missing authorization code');
+      }
     })();
-  }, [response, request, setSessionTokens]);
+  }, [response, request, completeOAuthLogin, finishFromCallbackUrl]);
+
+  useEffect(() => {
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      if (!isOAuthCallbackUrl(url)) {
+        return;
+      }
+      void finishFromCallbackUrl(url, request?.codeVerifier);
+    });
+    return () => sub.remove();
+  }, [finishFromCallbackUrl, request?.codeVerifier]);
 
   const onLogin = useCallback(async () => {
     setError(null);
@@ -78,11 +149,14 @@ export default function LoginScreen() {
         setError('Configure EXPO_PUBLIC_AUTH_ISSUER in apps/mobile/.env');
         return;
       }
-      if (request?.codeVerifier) {
-        await setPkceVerifier(request.codeVerifier);
+      if (!request?.codeVerifier) {
+        setError('login not ready — try again');
+        return;
       }
+      await setPkceVerifier(request.codeVerifier);
       await promptAsync({ createTask: false });
     } catch (e) {
+      await setPkceVerifier(null);
       setError(e instanceof Error ? e.message : 'login failed');
     }
   }, [promptAsync, request]);
