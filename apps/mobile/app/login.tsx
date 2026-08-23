@@ -14,6 +14,7 @@ import {
   isAuthConfigured,
   redirectUri,
   setPkceVerifier,
+  startLoginPrompt,
 } from '@/lib/auth';
 import { hasDisplayName } from '@/lib/displayName';
 import { appEntryHref } from '@/lib/navigation';
@@ -78,10 +79,13 @@ export default function LoginScreen() {
         setError('Configure EXPO_PUBLIC_AUTH_ISSUER in apps/mobile/.env');
         return;
       }
-      if (request?.codeVerifier) {
+      if (!request) {
+        return;
+      }
+      if (request.codeVerifier) {
         await setPkceVerifier(request.codeVerifier);
       }
-      await promptAsync({ createTask: false });
+      await startLoginPrompt(request, promptAsync);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'login failed');
     }

@@ -1,6 +1,7 @@
 import * as AuthSession from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
+import { Linking, Platform } from 'react-native';
 
 import { isNetworkError, send } from '@/lib/api/http';
 
@@ -48,6 +49,20 @@ export function discovery(): AuthSession.DiscoveryDocument {
     tokenEndpoint: `${issuer}/token`,
     userInfoEndpoint: `${issuer}/userinfo`,
   };
+}
+
+/** Android: system browser (Custom Tabs swallow app:// taps). iOS: ASWebAuthenticationSession. */
+export async function startLoginPrompt(
+  request: AuthSession.AuthRequest,
+  promptAsync: (
+    options?: AuthSession.AuthRequestPromptOptions,
+  ) => Promise<AuthSession.AuthSessionResult>,
+): Promise<void> {
+  if (Platform.OS === 'android' && request.url) {
+    await Linking.openURL(request.url);
+    return;
+  }
+  await promptAsync({ createTask: false });
 }
 
 /** Scopes for login — offline_access requests a refresh_token when the issuer allows it. */
