@@ -1,4 +1,5 @@
 import * as AuthSession from 'expo-auth-session';
+import * as Linking from 'expo-linking';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -39,6 +40,35 @@ export function redirectUri(): string {
     path: 'auth/callback',
     native: 'portclos://auth/callback',
   });
+}
+
+/** True when the URL is our OAuth redirect (portclos://auth/callback?…). */
+export function isOAuthCallbackUrl(url: string): boolean {
+  return url.includes('auth/callback');
+}
+
+export function parseOAuthCallbackUrl(
+  url: string,
+): { code?: string; state?: string; error?: string } | null {
+  if (!isOAuthCallbackUrl(url)) {
+    return null;
+  }
+  const { queryParams } = Linking.parse(url);
+  const pick = (key: string): string | undefined => {
+    const value = queryParams?.[key];
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (Array.isArray(value) && typeof value[0] === 'string') {
+      return value[0];
+    }
+    return undefined;
+  };
+  return {
+    code: pick('code'),
+    state: pick('state'),
+    error: pick('error'),
+  };
 }
 
 export function discovery(): AuthSession.DiscoveryDocument {
@@ -153,6 +183,11 @@ export async function setPkceVerifier(verifier: string | null): Promise<void> {
     return;
   }
   await SecureStore.setItemAsync(PKCE_KEY, verifier);
+}
+
+export async function hasPkceVerifier(): Promise<boolean> {
+  const verifier = await SecureStore.getItemAsync(PKCE_KEY);
+  return verifier != null;
 }
 
 export async function takePkceVerifier(): Promise<string | null> {
