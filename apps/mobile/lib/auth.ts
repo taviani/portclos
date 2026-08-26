@@ -2,6 +2,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as Linking from 'expo-linking';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
 
 import { isNetworkError, send } from '@/lib/api/http';
 
@@ -78,6 +79,23 @@ export function discovery(): AuthSession.DiscoveryDocument {
     tokenEndpoint: `${issuer}/token`,
     userInfoEndpoint: `${issuer}/userinfo`,
   };
+}
+
+/**
+ * Android Custom Tabs cannot hand off intent:// with package= — Chrome
+ * opens Play Store instead. Use the system browser; iOS stays on ASWebAuthenticationSession.
+ */
+export async function startLoginPrompt(
+  request: AuthSession.AuthRequest,
+  promptAsync: (
+    options?: AuthSession.AuthRequestPromptOptions,
+  ) => Promise<AuthSession.AuthSessionResult>,
+): Promise<void> {
+  if (Platform.OS === 'android' && request.url) {
+    await Linking.openURL(request.url);
+    return;
+  }
+  await promptAsync({ createTask: false });
 }
 
 /** Scopes for login — offline_access requests a refresh_token when the issuer allows it. */

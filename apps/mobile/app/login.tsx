@@ -18,6 +18,7 @@ import {
   parseOAuthCallbackUrl,
   redirectUri,
   setPkceVerifier,
+  startLoginPrompt,
   takePkceVerifier,
 } from '@/lib/auth';
 import { hasDisplayName } from '@/lib/displayName';
@@ -154,7 +155,7 @@ export default function LoginScreen() {
         return;
       }
       await setPkceVerifier(request.codeVerifier);
-      await promptAsync({ createTask: false });
+      await startLoginPrompt(request, promptAsync);
     } catch (e) {
       await setPkceVerifier(null);
       setError(e instanceof Error ? e.message : 'login failed');
