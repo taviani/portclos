@@ -61,10 +61,11 @@ jobs:
         run: go test ./...
 
       # Slow install+scan — keep on main / manual only, not every PR.
+      # Pin: @latest (v1.8+) needs go >= 1.26; CI uses go 1.25.13 + GOTOOLCHAIN=local.
       - name: govulncheck
         if: github.event_name != 'pull_request'
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
           govulncheck ./...
 
   api-smoke:
