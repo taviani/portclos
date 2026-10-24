@@ -2,6 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 import { queryClient } from '@/lib/queryClient';
+import { HouseInviteLinkProvider } from '@/providers/HouseInviteLinkProvider';
 import { SearchOverlayProvider } from '@/providers/SearchOverlayProvider';
 import { SessionProvider } from '@/providers/SessionProvider';
 import { TelemetryProvider } from '@/providers/TelemetryProvider';
@@ -12,9 +13,11 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <PortclosPaperProvider>
         <SessionProvider>
-          <TelemetryProvider>
-            <SearchOverlayProvider>{children}</SearchOverlayProvider>
-          </TelemetryProvider>
+          <HouseInviteLinkProvider>
+            <TelemetryProvider>
+              <SearchOverlayProvider>{children}</SearchOverlayProvider>
+            </TelemetryProvider>
+          </HouseInviteLinkProvider>
         </SessionProvider>
       </PortclosPaperProvider>
     </QueryClientProvider>

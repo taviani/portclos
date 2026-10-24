@@ -57,6 +57,10 @@ go run ./cmd/server
 - `PATCH /occupations/{id}` — update own occupation (`start_date`, `end_date`, `note` ; `guests` optional replace)
 - `DELETE /occupations/{id}` — delete own occupation
 - `GET /houses/{id}/members` — house roster (display names)
+- `DELETE /houses/{id}/members/{userSub}` — owner: remove a member (not the last owner)
+- `POST|GET /houses/{id}/invites` — owner: create (sends mail) / list pending house invites
+- `POST /houses/{id}/invites/{inviteId}/revoke` — owner: revoke pending invite
+- `POST /house-invites/accept` — `{ "token" }` → join house (email must match JWT)
 - `GET|POST /houses/{id}/posts` · `GET|DELETE /posts/{id}` — house blog (`tags`, `mentions` on create)
 - `POST /posts/{id}/photos` · `GET /blog-photos/{id}` · `POST /posts/{id}/comments` · `PUT|DELETE /posts/{id}/reactions`
 - `GET|POST /houses/{id}/help` · `GET|PATCH|DELETE /help/{id}` · `POST /help/{id}/photos` · `GET|DELETE /help-photos/{id}` · `POST /help/{id}/documents` · `GET|DELETE /help-documents/{id}`

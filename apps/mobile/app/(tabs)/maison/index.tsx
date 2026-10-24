@@ -40,7 +40,7 @@ export default function MaisonHubScreen() {
           variant="bodyLarge"
           style={{ color: theme.colors.onSurfaceVariant, marginTop: 8, lineHeight: 24 }}
         >
-          Choisis ou crée une maison dans Compte pour commencer.
+          Demande une invitation à un propriétaire, ou crée une maison dans Compte.
         </Text>
         <Button
           mode="contained"

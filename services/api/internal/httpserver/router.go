@@ -13,16 +13,30 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/taviani/portclos/services/api/internal/auth"
+	"github.com/taviani/portclos/services/api/internal/mail"
 	"github.com/taviani/portclos/services/api/internal/media"
 	"github.com/taviani/portclos/services/api/internal/store"
 )
 
-func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) http.Handler {
+// Deps are optional collaborators for routes that need mail / deep links.
+type Deps struct {
+	Mailer          mail.Mailer
+	HouseInviteLink string
+}
+
+func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store, deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(accessAndUsage(db))
 	r.Use(recoverJSON)
+
+	if deps.Mailer == nil {
+		deps.Mailer = mail.LogMailer{}
+	}
+	if deps.HouseInviteLink == "" {
+		deps.HouseInviteLink = "portclos://house-invite"
+	}
 
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -32,6 +46,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 		pr.Use(validator.Middleware)
 		mountEventRoutes(pr, db)
 		mountCommunityRoutes(pr, db, files)
+		mountInviteRoutes(pr, db, deps.Mailer, deps.HouseInviteLink)
 
 		pr.Get("/houses", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := auth.UserFromContext(r.Context())
@@ -198,11 +213,11 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store) h
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
-				"occupations":   list,
-				"bed_capacity":  house.BedCapacity,
-				"single_beds":   house.SingleBeds,
-				"double_beds":   house.DoubleBeds,
-				"day_loads":     loads,
+				"occupations":  list,
+				"bed_capacity": house.BedCapacity,
+				"single_beds":  house.SingleBeds,
+				"double_beds":  house.DoubleBeds,
+				"day_loads":    loads,
 			})
 		})
 

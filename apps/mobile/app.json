@@ -36,6 +36,16 @@
               "pathPrefix": "/callback"
             }
           ]
+        },
+        {
+          "action": "VIEW",
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": [
+            {
+              "scheme": "portclos",
+              "host": "house-invite"
+            }
+          ]
         }
       ]
     },
