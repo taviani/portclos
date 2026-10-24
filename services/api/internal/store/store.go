@@ -111,6 +111,9 @@ CREATE INDEX IF NOT EXISTS occupations_house_range_idx
 	if err := s.migrateEvents(ctx); err != nil {
 		return fmt.Errorf("migrate events: %w", err)
 	}
+	if err := s.migrateInvites(ctx); err != nil {
+		return fmt.Errorf("migrate invites: %w", err)
+	}
 	return nil
 }
 

@@ -153,6 +153,13 @@ function RootStack() {
           headerBackButtonDisplayMode: 'minimal',
         }}
       />
+      <Stack.Screen
+        name="inviter"
+        options={{
+          title: 'Inviter',
+          headerBackButtonDisplayMode: 'minimal',
+        }}
+      />
       <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       <Stack.Screen name="+not-found" options={{ headerShown: false }} />
     </Stack>

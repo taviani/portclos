@@ -8,7 +8,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { Redirect, useNavigation } from 'expo-router';
+import { type Href, Redirect, router, useNavigation } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -546,6 +546,18 @@ export default function CompteScreen() {
             Changer / ajouter une maison
           </Button>
         )}
+
+        {activeHouse?.role === 'owner' ? (
+          <Button
+            mode="outlined"
+            icon="account-plus-outline"
+            onPress={() => router.push('/inviter' as Href)}
+            style={[styles.cta, { marginTop: 12 }]}
+            contentStyle={styles.ctaContent}
+          >
+            Inviter à {activeHouse.name}
+          </Button>
+        ) : null}
 
         {error || queryError ? (
           <Text style={{ color: theme.colors.error, marginTop: 16 }}>

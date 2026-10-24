@@ -7,12 +7,18 @@ import (
 )
 
 type Config struct {
-	Port         int
-	AuthIssuer   string
-	AuthDisabled bool
-	DatabaseURL  string
-	UploadDir    string
-	LogLevel     string
+	Port            int
+	AuthIssuer      string
+	AuthDisabled    bool
+	DatabaseURL     string
+	UploadDir       string
+	LogLevel        string
+	SMTPHost        string
+	SMTPPort        int
+	SMTPUsername    string
+	SMTPPassword    string
+	SMTPFrom        string
+	HouseInviteLink string // deep link base, e.g. portclos://house-invite
 }
 
 func Load() (Config, error) {
@@ -41,12 +47,30 @@ func Load() (Config, error) {
 	if logLevel == "" {
 		logLevel = "info"
 	}
+	smtpPort := 587
+	if raw := os.Getenv("SMTP_PORT"); raw != "" {
+		p, err := strconv.Atoi(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("SMTP_PORT: %w", err)
+		}
+		smtpPort = p
+	}
+	inviteLink := os.Getenv("HOUSE_INVITE_LINK_BASE")
+	if inviteLink == "" {
+		inviteLink = "portclos://house-invite"
+	}
 	return Config{
-		Port:         port,
-		AuthIssuer:   issuer,
-		AuthDisabled: disabled,
-		DatabaseURL:  dbURL,
-		UploadDir:    uploadDir,
-		LogLevel:     logLevel,
+		Port:            port,
+		AuthIssuer:      issuer,
+		AuthDisabled:    disabled,
+		DatabaseURL:     dbURL,
+		UploadDir:       uploadDir,
+		LogLevel:        logLevel,
+		SMTPHost:        os.Getenv("SMTP_HOST"),
+		SMTPPort:        smtpPort,
+		SMTPUsername:    os.Getenv("SMTP_USERNAME"),
+		SMTPPassword:    os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:        os.Getenv("SMTP_FROM"),
+		HouseInviteLink: inviteLink,
 	}, nil
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/taviani/portclos/services/api/internal/auth"
 	"github.com/taviani/portclos/services/api/internal/config"
 	"github.com/taviani/portclos/services/api/internal/httpserver"
+	"github.com/taviani/portclos/services/api/internal/mail"
 	"github.com/taviani/portclos/services/api/internal/media"
 	"github.com/taviani/portclos/services/api/internal/store"
 )
@@ -50,9 +51,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	mailer, err := mail.NewFromConfig(mail.Config{
+		Host:     cfg.SMTPHost,
+		Port:     cfg.SMTPPort,
+		Username: cfg.SMTPUsername,
+		Password: cfg.SMTPPassword,
+		From:     cfg.SMTPFrom,
+	})
+	if err != nil {
+		slog.Error("mail_init_failed", "error", err)
+		os.Exit(1)
+	}
+	if cfg.SMTPHost == "" {
+		slog.Warn("smtp_disabled", "msg", "house invite mails are logged only")
+	}
+
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Port),
-		Handler:      httpserver.NewRouter(validator, db, files),
+		Addr: fmt.Sprintf(":%d", cfg.Port),
+		Handler: httpserver.NewRouter(validator, db, files, httpserver.Deps{
+			Mailer:          mailer,
+			HouseInviteLink: cfg.HouseInviteLink,
+		}),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
