@@ -23,7 +23,7 @@ Visual / brand changes: edit `apps/mobile/theme/lighthouse.ts` first, then Paper
 ## Prerequisites
 
 - Node 22+
-- Go 1.25+
+- Go 1.26+
 - Docker + `docker-compose` (hyphen)
 
 ## Local API
