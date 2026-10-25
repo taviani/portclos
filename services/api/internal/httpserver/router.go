@@ -22,6 +22,7 @@ import (
 type Deps struct {
 	Mailer          mail.Mailer
 	HouseInviteLink string
+	AndroidPackage  string // Play package for intent:// open links (default com.portclos.app)
 }
 
 func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store, deps Deps) http.Handler {
@@ -41,6 +42,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store, d
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	mountPublicInviteOpen(r, deps.AndroidPackage)
 
 	r.Group(func(pr chi.Router) {
 		pr.Use(validator.Middleware)

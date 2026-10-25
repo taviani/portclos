@@ -71,6 +71,7 @@ func main() {
 		Handler: httpserver.NewRouter(validator, db, files, httpserver.Deps{
 			Mailer:          mailer,
 			HouseInviteLink: cfg.HouseInviteLink,
+			AndroidPackage:  cfg.AndroidPackage,
 		}),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
