@@ -42,6 +42,8 @@ func mountInviteRoutes(pr chi.Router, db *store.Store, mailer mail.Mailer, invit
 		}
 		acceptURL := buildHouseInviteURL(inviteLinkBase, raw)
 		if err := mailer.SendHouseInvite(r.Context(), inv.Email, houseName, acceptURL); err != nil {
+			// Free the pending slot so the owner can retry after fixing SMTP.
+			_ = db.RevokeHouseInvite(r.Context(), houseID, inv.ID, user.Subject)
 			writeAPIError(w, r, http.StatusInternalServerError, "mail_failed", err)
 			return
 		}
