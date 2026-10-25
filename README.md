@@ -61,6 +61,7 @@ go run ./cmd/server
 - `POST|GET /houses/{id}/invites` — owner: create (sends mail) / list pending house invites
 - `POST /houses/{id}/invites/{inviteId}/revoke` — owner: revoke pending invite
 - `POST /house-invites/accept` — `{ "token" }` → join house (email must match JWT)
+- `GET /house-invite?token=` — public HTML “Ouvrir Portclos” (Android `intent://`, iOS deep link)
 - `GET|POST /houses/{id}/posts` · `GET|DELETE /posts/{id}` — house blog (`tags`, `mentions` on create)
 - `POST /posts/{id}/photos` · `GET /blog-photos/{id}` · `POST /posts/{id}/comments` · `PUT|DELETE /posts/{id}/reactions`
 - `GET|POST /houses/{id}/help` · `GET|PATCH|DELETE /help/{id}` · `POST /help/{id}/photos` · `GET|DELETE /help-photos/{id}` · `POST /help/{id}/documents` · `GET|DELETE /help-documents/{id}`

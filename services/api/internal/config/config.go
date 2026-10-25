@@ -18,7 +18,8 @@ type Config struct {
 	SMTPUsername    string
 	SMTPPassword    string
 	SMTPFrom        string
-	HouseInviteLink string // deep link base, e.g. portclos://house-invite
+	HouseInviteLink string // HTTPS landing or deep link base for invite emails
+	AndroidPackage  string // Play package for Android intent:// open page
 }
 
 func Load() (Config, error) {
@@ -59,6 +60,10 @@ func Load() (Config, error) {
 	if inviteLink == "" {
 		inviteLink = "portclos://house-invite"
 	}
+	androidPkg := os.Getenv("ANDROID_PACKAGE")
+	if androidPkg == "" {
+		androidPkg = "com.portclos.app"
+	}
 	return Config{
 		Port:            port,
 		AuthIssuer:      issuer,
@@ -72,5 +77,6 @@ func Load() (Config, error) {
 		SMTPPassword:    os.Getenv("SMTP_PASSWORD"),
 		SMTPFrom:        os.Getenv("SMTP_FROM"),
 		HouseInviteLink: inviteLink,
+		AndroidPackage:  androidPkg,
 	}, nil
 }

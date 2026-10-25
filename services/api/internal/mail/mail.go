@@ -65,8 +65,9 @@ func (m *SMTPMailer) SendHouseInvite(ctx context.Context, to, houseName, acceptU
 	body := fmt.Sprintf(
 		"Bonjour,\n\n"+
 			"Tu es invité(e) à rejoindre la maison « %s » sur Portclos.\n\n"+
-			"Ouvre ce lien depuis ton téléphone (app Portclos déjà installée) :\n\n%s\n\n"+
-			"Si tu n’as pas encore de compte Portclos, connecte-toi ou crée ton compte, puis rouvre ce lien.\n\n"+
+			"Ouvre ce lien sur ton téléphone (app Portclos installée), puis appuie sur « Ouvrir Portclos » :\n\n%s\n\n"+
+			"Sur Android, ouvre le lien dans Chrome si ton appli mail ne propose pas d’ouvrir Portclos.\n\n"+
+			"Si tu n’as pas encore de compte, connecte-toi ou crée ton compte Portclos, puis rouvre ce lien.\n\n"+
 			"Si tu n’attendais pas cette invitation, ignore ce message. Le lien expire sous 7 jours.\n",
 		houseName, acceptURL,
 	)
