@@ -2,8 +2,11 @@ package mail
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
+	"html"
 	"log/slog"
 	"net"
 	"net/smtp"
@@ -62,23 +65,36 @@ func NewSMTPMailer(cfg Config) (*SMTPMailer, error) {
 
 func (m *SMTPMailer) SendHouseInvite(ctx context.Context, to, houseName, acceptURL string) error {
 	subject := fmt.Sprintf("Invitation à la maison %s — Portclos", houseName)
-	body := fmt.Sprintf(
+	plain := fmt.Sprintf(
 		"Bonjour,\n\n"+
 			"Tu es invité(e) à rejoindre la maison « %s » sur Portclos.\n\n"+
-			"Ouvre ce lien sur ton téléphone (app Portclos installée), puis appuie sur « Ouvrir Portclos » :\n\n%s\n\n"+
-			"Sur Android, ouvre le lien dans Chrome si ton appli mail ne propose pas d’ouvrir Portclos.\n\n"+
+			"Ouvre ce lien sur ton téléphone (app Portclos installée) :\n\n%s\n\n"+
+			"Puis appuie sur « Ouvrir Portclos » si une page s’affiche.\n\n"+
 			"Si tu n’as pas encore de compte, connecte-toi ou crée ton compte Portclos, puis rouvre ce lien.\n\n"+
 			"Si tu n’attendais pas cette invitation, ignore ce message. Le lien expire sous 7 jours.\n",
 		houseName, acceptURL,
 	)
-	return m.send(ctx, to, subject, body)
+	safeName := html.EscapeString(houseName)
+	safeURL := html.EscapeString(acceptURL)
+	htmlBody := fmt.Sprintf(
+		`<!doctype html><html lang="fr"><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#1a1a1a">`+
+			`<p>Bonjour,</p>`+
+			`<p>Tu es invité(e) à rejoindre la maison « <strong>%s</strong> » sur Portclos.</p>`+
+			`<p><a href="%s" style="display:inline-block;padding:12px 18px;background:#0b3d5c;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">`+
+			`Ouvrir l’invitation</a></p>`+
+			`<p style="color:#555;font-size:14px">Ou copie ce lien&nbsp;:<br><a href="%s">%s</a></p>`+
+			`<p style="color:#555;font-size:14px">Si tu n’as pas encore de compte Portclos, connecte-toi ou crée ton compte, puis rouvre ce lien. Expire sous 7 jours.</p>`+
+			`</body></html>`,
+		safeName, safeURL, safeURL, safeURL,
+	)
+	return m.send(ctx, to, subject, plain, htmlBody)
 }
 
-func (m *SMTPMailer) send(ctx context.Context, to, subject, body string) error {
+func (m *SMTPMailer) send(ctx context.Context, to, subject, plain, htmlBody string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	msg := buildMessage(m.cfg.From, to, subject, body)
+	msg := buildMultipartMessage(m.cfg.From, to, subject, plain, htmlBody)
 	addr := net.JoinHostPort(m.cfg.Host, fmt.Sprintf("%d", m.cfg.Port))
 
 	var auth smtp.Auth
@@ -131,14 +147,33 @@ func (m *SMTPMailer) sendImplicitTLS(addr string, auth smtp.Auth, to string, msg
 	return client.Quit()
 }
 
-func buildMessage(from, to, subject, body string) []byte {
+func buildMultipartMessage(from, to, subject, plain, htmlBody string) []byte {
+	boundary := "portclos_" + randomBoundary()
 	var b strings.Builder
 	b.WriteString("From: " + from + "\r\n")
 	b.WriteString("To: " + to + "\r\n")
 	b.WriteString("Subject: " + subject + "\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
-	b.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
+	b.WriteString("Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n")
 	b.WriteString("\r\n")
-	b.WriteString(body)
+	b.WriteString("--" + boundary + "\r\n")
+	b.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
+	b.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
+	b.WriteString(plain)
+	b.WriteString("\r\n")
+	b.WriteString("--" + boundary + "\r\n")
+	b.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
+	b.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
+	b.WriteString(htmlBody)
+	b.WriteString("\r\n")
+	b.WriteString("--" + boundary + "--\r\n")
 	return []byte(b.String())
+}
+
+func randomBoundary() string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return "boundary"
+	}
+	return hex.EncodeToString(buf)
 }
