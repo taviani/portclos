@@ -29,6 +29,7 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store, d
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	r.Use(corsLocalDev)
 	r.Use(accessAndUsage(db))
 	r.Use(recoverJSON)
 

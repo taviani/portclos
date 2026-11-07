@@ -1,5 +1,6 @@
 import * as Linking from 'expo-linking';
-import * as SecureStore from 'expo-secure-store';
+
+import * as SecureStore from '@/lib/secureStore';
 
 const PENDING_KEY = 'portclos.pending_house_invite_token';
 

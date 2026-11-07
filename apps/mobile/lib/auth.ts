@@ -1,10 +1,10 @@
 import * as AuthSession from 'expo-auth-session';
 import * as Linking from 'expo-linking';
-import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 
 import { isNetworkError, send } from '@/lib/api/http';
+import * as SecureStore from '@/lib/secureStore';
 
 WebBrowser.maybeCompleteAuthSession();
 

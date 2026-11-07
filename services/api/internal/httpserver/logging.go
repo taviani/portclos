@@ -118,6 +118,27 @@ func recoverJSON(next http.Handler) http.Handler {
 	})
 }
 
+// corsLocalDev allows Expo web (localhost) to call the API during local preview.
+func corsLocalDev(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin == "http://localhost:8081" ||
+			origin == "http://127.0.0.1:8081" ||
+			origin == "http://localhost:19006" ||
+			origin == "http://127.0.0.1:19006" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Vary", "Origin")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // writeAPIError returns {"error":"<code>","request_id":"..."} and logs 5xx causes.
 func writeAPIError(w http.ResponseWriter, r *http.Request, status int, code string, cause error) {
 	reqID := ""
