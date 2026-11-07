@@ -41,6 +41,8 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:prod": "node scripts/apply-env-from-process.mjs && expo start",
+    "env:prod": "node scripts/apply-env-from-process.mjs",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",

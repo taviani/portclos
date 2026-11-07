@@ -21,11 +21,21 @@ import {
   startLoginPrompt,
   takePkceVerifier,
 } from '@/lib/auth';
+import { apiBaseUrl } from '@/lib/api/http';
 import { hasDisplayName } from '@/lib/displayName';
 import { appEntryHref } from '@/lib/navigation';
 import { useSession } from '@/providers/SessionProvider';
 import { Lighthouse } from '@/theme/lighthouse';
 import { useAppTheme } from '@/theme/paper';
+
+function isLocalApiBase(): boolean {
+  try {
+    const host = new URL(apiBaseUrl()).hostname;
+    return host === 'localhost' || host === '127.0.0.1';
+  } catch {
+    return true;
+  }
+}
 
 export default function LoginScreen() {
   const theme = useAppTheme();
@@ -237,7 +247,7 @@ export default function LoginScreen() {
       >
         Se connecter
       </Button>
-      {__DEV__ ? (
+      {__DEV__ && isLocalApiBase() ? (
         <Button mode="text" onPress={onLocalDev} disabled={busy} style={{ marginTop: 12 }}>
           Mode local (AUTH_DISABLED)
         </Button>
