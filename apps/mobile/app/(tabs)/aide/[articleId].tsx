@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,6 +13,7 @@ import {
 } from 'react-native-paper';
 
 import { AuthedImage } from '@/components/AuthedImage';
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { useCurrentHouse } from '@/hooks/useHouses';
 import {
   useDeleteHelpArticle,
@@ -276,10 +277,9 @@ export default function AideArticleScreen() {
   const photos = article.data.photos ?? [];
 
   return (
-    <ScrollView
+    <KeyboardScreen
       style={{ backgroundColor: theme.colors.background }}
       contentContainerStyle={styles.pad}
-      keyboardShouldPersistTaps="handled"
     >
       {editing ? (
         <>
@@ -451,7 +451,7 @@ export default function AideArticleScreen() {
       {error ? (
         <Text style={{ color: theme.colors.error, marginTop: 14 }}>{error}</Text>
       ) : null}
-    </ScrollView>
+    </KeyboardScreen>
   );
 }
 

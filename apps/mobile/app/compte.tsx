@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { type Href, Redirect, router, useNavigation } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,6 +15,7 @@ import {
 } from 'react-native-paper';
 
 import { AuthedImage } from '@/components/AuthedImage';
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { MaisonHeaderActions } from '@/components/MaisonHeaderActions';
 import {
   useCreateHouse,
@@ -279,18 +272,10 @@ export default function CompteScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: theme.colors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+    <KeyboardScreen
+      style={{ backgroundColor: theme.colors.background }}
+      contentContainerStyle={styles.container}
     >
-      <ScrollView
-        style={{ flex: 1, backgroundColor: theme.colors.background }}
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
-      >
         {/* —— Identité —— */}
         <View style={styles.identity}>
           <Pressable
@@ -564,8 +549,7 @@ export default function CompteScreen() {
             {error || queryError}
           </Text>
         ) : null}
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 

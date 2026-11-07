@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -13,6 +13,7 @@ import {
 } from 'react-native-paper';
 
 import { AuthedImage } from '@/components/AuthedImage';
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import {
   useChecklistItems,
   useCreateChecklistItem,
@@ -27,6 +28,7 @@ import { useAppTheme } from '@/theme/paper';
 
 export default function FermetureModeleScreen() {
   const theme = useAppTheme();
+  const scrollRef = useRef<ScrollView>(null);
   const { house, isLoading } = useCurrentHouse();
   const items = useChecklistItems(house?.id);
   const createItem = useCreateChecklistItem(house?.id);
@@ -34,6 +36,13 @@ export default function FermetureModeleScreen() {
   const deleteItem = useDeleteChecklistItem(house?.id);
   const uploadPhoto = useUploadChecklistPhoto(house?.id);
   const deletePhoto = useDeleteChecklistPhoto(house?.id);
+
+  const scrollToFocused = () => {
+    // Bottom "Nouvelle tâche" / inline edit sit under the keyboard without this.
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  };
 
   const [label, setLabel] = useState('');
   const [description, setDescription] = useState('');
@@ -150,10 +159,10 @@ export default function FermetureModeleScreen() {
   }
 
   return (
-    <ScrollView
+    <KeyboardScreen
+      ref={scrollRef}
       style={{ backgroundColor: theme.colors.background }}
       contentContainerStyle={styles.pad}
-      keyboardShouldPersistTaps="handled"
     >
       <Text
         variant="headlineMedium"
@@ -183,6 +192,7 @@ export default function FermetureModeleScreen() {
                   label="Libellé"
                   value={editLabel}
                   onChangeText={setEditLabel}
+                  onFocus={scrollToFocused}
                   style={{ backgroundColor: theme.colors.surface, marginBottom: 8 }}
                 />
                 <TextInput
@@ -190,6 +200,7 @@ export default function FermetureModeleScreen() {
                   label="Description (optionnel)"
                   value={editDescription}
                   onChangeText={setEditDescription}
+                  onFocus={scrollToFocused}
                   multiline
                   numberOfLines={3}
                   style={{ backgroundColor: theme.colors.surface }}
@@ -340,6 +351,7 @@ export default function FermetureModeleScreen() {
           placeholder="Ex. Fermer le portail"
           value={label}
           onChangeText={setLabel}
+          onFocus={scrollToFocused}
           style={{ backgroundColor: theme.colors.surface }}
         />
         <TextInput
@@ -348,6 +360,7 @@ export default function FermetureModeleScreen() {
           placeholder="Précisions, emplacement…"
           value={description}
           onChangeText={setDescription}
+          onFocus={scrollToFocused}
           multiline
           numberOfLines={3}
           style={{ backgroundColor: theme.colors.surface, marginTop: 8 }}
@@ -387,12 +400,12 @@ export default function FermetureModeleScreen() {
       {error ? (
         <Text style={{ color: theme.colors.error, marginTop: 12 }}>{error}</Text>
       ) : null}
-    </ScrollView>
+    </KeyboardScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  pad: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 48 },
+  pad: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   item: { borderRadius: 18, padding: 12, marginBottom: 10 },
   itemTop: { flexDirection: 'row', alignItems: 'flex-start' },

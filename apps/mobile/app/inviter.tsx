@@ -1,12 +1,5 @@
 import { useCallback, useLayoutEffect, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { Redirect, useNavigation } from 'expo-router';
 import {
   ActivityIndicator,
@@ -17,6 +10,7 @@ import {
   TextInput,
 } from 'react-native-paper';
 
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import {
   useCreateHouseInvite,
   useHouseInvites,
@@ -159,109 +153,103 @@ export default function InviterScreen() {
   const mySub = me.data?.sub;
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: theme.colors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+    <KeyboardScreen
+      style={{ backgroundColor: theme.colors.background }}
+      contentContainerStyle={styles.container}
     >
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
+      <Text
+        variant="bodyMedium"
+        style={{ color: theme.colors.onSurfaceVariant, lineHeight: 22, marginBottom: 12 }}
       >
-        <Text
-          variant="bodyMedium"
-          style={{ color: theme.colors.onSurfaceVariant, lineHeight: 22, marginBottom: 12 }}
-        >
-          Invite quelqu’un à rejoindre « {house.name} ». La personne doit se connecter avec
-          le même e-mail, puis ouvrir le lien reçu.
+        Invite quelqu’un à rejoindre « {house.name} ». La personne doit se connecter avec
+        le même e-mail, puis ouvrir le lien reçu.
+      </Text>
+
+      <TextInput
+        mode="outlined"
+        label="E-mail"
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        keyboardType="email-address"
+        autoCorrect={false}
+        style={styles.field}
+      />
+      <Button
+        mode="contained"
+        icon="email-plus-outline"
+        onPress={() => void onInvite()}
+        loading={createInvite.isPending}
+        disabled={!email.trim() || createInvite.isPending}
+        style={styles.cta}
+        contentStyle={styles.ctaContent}
+      >
+        Envoyer l’invitation
+      </Button>
+
+      {okMsg ? (
+        <Text style={{ color: theme.colors.primary, marginTop: 12 }}>{okMsg}</Text>
+      ) : null}
+      {error ? (
+        <Text style={{ color: theme.colors.error, marginTop: 12 }}>{error}</Text>
+      ) : null}
+
+      <Divider style={styles.divider} />
+
+      <Text variant="titleMedium" style={{ fontWeight: '700', marginBottom: 4 }}>
+        Invitations en attente
+      </Text>
+      {invites.isLoading ? (
+        <ActivityIndicator animating color={theme.colors.primary} />
+      ) : (invites.data ?? []).length === 0 ? (
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+          Aucune invitation en attente.
         </Text>
+      ) : (
+        (invites.data ?? []).map((inv) => (
+          <List.Item
+            key={inv.id}
+            title={inv.email}
+            description="En attente"
+            right={() => (
+              <Button compact onPress={() => onRevoke(inv.id, inv.email)}>
+                Révoquer
+              </Button>
+            )}
+            style={styles.listRow}
+          />
+        ))
+      )}
 
-        <TextInput
-          mode="outlined"
-          label="E-mail"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          autoCorrect={false}
-          style={styles.field}
-        />
-        <Button
-          mode="contained"
-          icon="email-plus-outline"
-          onPress={() => void onInvite()}
-          loading={createInvite.isPending}
-          disabled={!email.trim() || createInvite.isPending}
-          style={styles.cta}
-          contentStyle={styles.ctaContent}
-        >
-          Envoyer l’invitation
-        </Button>
+      <Divider style={styles.divider} />
 
-        {okMsg ? (
-          <Text style={{ color: theme.colors.primary, marginTop: 12 }}>{okMsg}</Text>
-        ) : null}
-        {error ? (
-          <Text style={{ color: theme.colors.error, marginTop: 12 }}>{error}</Text>
-        ) : null}
-
-        <Divider style={styles.divider} />
-
-        <Text variant="titleMedium" style={{ fontWeight: '700', marginBottom: 4 }}>
-          Invitations en attente
-        </Text>
-        {invites.isLoading ? (
-          <ActivityIndicator animating color={theme.colors.primary} />
-        ) : (invites.data ?? []).length === 0 ? (
-          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-            Aucune invitation en attente.
-          </Text>
-        ) : (
-          (invites.data ?? []).map((inv) => (
+      <Text variant="titleMedium" style={{ fontWeight: '700', marginBottom: 4 }}>
+        Membres
+      </Text>
+      {members.isLoading ? (
+        <ActivityIndicator animating color={theme.colors.primary} />
+      ) : (
+        (members.data ?? []).map((m) => {
+          const label = m.display_name?.trim() || m.email || m.user_sub;
+          const canRemove = m.user_sub !== mySub;
+          return (
             <List.Item
-              key={inv.id}
-              title={inv.email}
-              description="En attente"
-              right={() => (
-                <Button compact onPress={() => onRevoke(inv.id, inv.email)}>
-                  Révoquer
-                </Button>
-              )}
+              key={m.user_sub}
+              title={label}
+              description={m.role === 'owner' ? 'Propriétaire' : 'Membre'}
+              right={() =>
+                canRemove ? (
+                  <Button compact onPress={() => onRemove(m.user_sub, label)} textColor={theme.colors.error}>
+                    Retirer
+                  </Button>
+                ) : null
+              }
               style={styles.listRow}
             />
-          ))
-        )}
-
-        <Divider style={styles.divider} />
-
-        <Text variant="titleMedium" style={{ fontWeight: '700', marginBottom: 4 }}>
-          Membres
-        </Text>
-        {members.isLoading ? (
-          <ActivityIndicator animating color={theme.colors.primary} />
-        ) : (
-          (members.data ?? []).map((m) => {
-            const label = m.display_name?.trim() || m.email || m.user_sub;
-            const canRemove = m.user_sub !== mySub;
-            return (
-              <List.Item
-                key={m.user_sub}
-                title={label}
-                description={m.role === 'owner' ? 'Propriétaire' : 'Membre'}
-                right={() =>
-                  canRemove ? (
-                    <Button compact onPress={() => onRemove(m.user_sub, label)} textColor={theme.colors.error}>
-                      Retirer
-                    </Button>
-                  ) : null
-                }
-                style={styles.listRow}
-              />
-            );
-          })
-        )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+          );
+        })
+      )}
+    </KeyboardScreen>
   );
 }
 

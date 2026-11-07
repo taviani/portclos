@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Redirect } from 'expo-router';
 import { ActivityIndicator, Button, Text, TextInput } from 'react-native-paper';
 
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { useMe } from '@/hooks/useHouses';
 import { useUpdateDisplayName } from '@/hooks/useProfile';
 import {
@@ -89,9 +85,10 @@ export default function DisplayNameScreen() {
   const canSave = Boolean(normalizeDisplayName(value)) && !updateName.isPending;
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <KeyboardScreen
+      style={{ backgroundColor: theme.colors.background }}
+      contentContainerStyle={styles.container}
+      keyboardVerticalOffset={0}
     >
       <Text
         variant="displaySmall"
@@ -160,14 +157,15 @@ export default function DisplayNameScreen() {
       >
         Se déconnecter
       </Button>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 28,
+    paddingVertical: 28,
     justifyContent: 'center',
   },
   center: {

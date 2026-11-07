@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -12,6 +11,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { Text, View, useThemeColor } from '@/components/Themed';
 import { useCurrentHouse, useMe, useUpdateHouse } from '@/hooks/useHouses';
 import {
@@ -424,19 +424,11 @@ export default function PresencesScreen() {
   const saving = createOcc.isPending || updateOcc.isPending;
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: screenBg }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+    <KeyboardScreen
+      ref={scrollRef}
+      style={{ backgroundColor: screenBg }}
+      contentContainerStyle={styles.scroll}
     >
-      <ScrollView
-        ref={scrollRef}
-        style={styles.flex}
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
-      >
       <View style={styles.monthRow}>
         <Pressable onPress={() => setMonth((m) => shiftMonth(m, -1))}>
           <Text style={styles.monthNav}>‹</Text>
@@ -805,8 +797,7 @@ export default function PresencesScreen() {
         <Text style={styles.err}>{occupations.error.message}</Text>
       ) : null}
       </RNView>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 

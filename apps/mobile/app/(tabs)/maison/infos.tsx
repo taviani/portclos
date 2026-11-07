@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { Button, Text, TextInput } from 'react-native-paper';
 
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { useCurrentHouse, useUpdateHouse } from '@/hooks/useHouses';
 import { useAppTheme } from '@/theme/paper';
 
@@ -99,18 +94,11 @@ export default function MaisonInfosScreen() {
           .join(' · ');
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: theme.colors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+    <KeyboardScreen
+      style={{ backgroundColor: theme.colors.background }}
+      contentContainerStyle={styles.container}
     >
       <Stack.Screen options={{ title: 'Infos maison' }} />
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
-      >
         <Text
           variant="headlineSmall"
           style={{
@@ -267,8 +255,7 @@ export default function MaisonInfosScreen() {
         {error ? (
           <Text style={{ color: theme.colors.error, marginTop: 20 }}>{error}</Text>
         ) : null}
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 

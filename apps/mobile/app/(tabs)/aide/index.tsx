@@ -12,6 +12,7 @@ import {
   TextInput,
 } from 'react-native-paper';
 
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import {
   useCreateHelpArticle,
   useHelpArticles,
@@ -195,7 +196,10 @@ export default function AideListScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
+      <KeyboardScreen
+        style={{ backgroundColor: theme.colors.background }}
+        contentContainerStyle={styles.pad}
+      >
         <Text
           variant="bodyLarge"
           style={{ color: theme.colors.onSurfaceVariant, marginBottom: 16, lineHeight: 24 }}
@@ -327,7 +331,7 @@ export default function AideListScreen() {
             {articles.error.message}
           </Text>
         ) : null}
-      </ScrollView>
+      </KeyboardScreen>
 
       {!composing ? (
         <FAB
