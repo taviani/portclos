@@ -180,7 +180,9 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     concurrency:
       group: deploy
-      cancel-in-progress: true
+      # Never cancel mid-rsync/SSH: a half-finished recreate leaves compose
+      # pointing at a container ID that no longer exists ("No such container").
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
 
@@ -226,4 +228,23 @@ jobs:
             --exclude .git \
             --exclude .expo \
             ./ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
-          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "cd ${DEPLOY_PATH} && docker-compose --profile metabase up -d --build"
+          # Compose recreate can fail with "No such container" when the old
+          # API container ID is already gone. Drop the stale name and retry once.
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<EOF
+          set -euo pipefail
+          cd "${DEPLOY_PATH}"
+          compose() {
+            if command -v docker-compose >/dev/null 2>&1; then
+              docker-compose "\$@"
+            else
+              docker compose "\$@"
+            fi
+          }
+          if ! compose --profile metabase up -d --build; then
+            echo "Compose up failed; clearing stale api container and retrying"
+            compose --profile metabase stop api || true
+            compose --profile metabase rm -f api || true
+            docker rm -f portclos-api-1 2>/dev/null || true
+            compose --profile metabase up -d --build
+          fi
+          EOF
