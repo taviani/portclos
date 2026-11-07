@@ -79,7 +79,7 @@ export default function MaisonInfosScreen() {
   if (!house) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-        <Stack.Screen options={{ title: 'Infos' }} />
+        <Stack.Screen options={{ title: 'Réglages' }} />
         <Text style={{ color: theme.colors.onSurfaceVariant }}>Aucune maison.</Text>
       </View>
     );
@@ -104,7 +104,7 @@ export default function MaisonInfosScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
     >
-      <Stack.Screen options={{ title: 'Infos maison' }} />
+      <Stack.Screen options={{ title: 'Réglages' }} />
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
@@ -257,7 +257,7 @@ export default function MaisonInfosScreen() {
             variant="bodySmall"
             style={{ color: theme.colors.outline, marginTop: 24, lineHeight: 18 }}
           >
-            Seul un propriétaire peut modifier ces infos.
+            Seul un propriétaire peut modifier ces réglages.
           </Text>
         ) : null}
 
