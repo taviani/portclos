@@ -8,5 +8,7 @@ export * from '@/lib/api/search';
 export * from '@/lib/api/closing';
 export * from '@/lib/api/blog';
 export * from '@/lib/api/help';
+export * from '@/lib/api/inventory';
+export * from '@/lib/api/chantier';
 export * from '@/lib/api/search';
 export * from '@/lib/api/events';

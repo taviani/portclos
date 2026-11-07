@@ -404,6 +404,8 @@ func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store, d
 		})
 
 		mountClosingRoutes(pr, db, files)
+		mountInventoryRoutes(pr, db)
+		mountChantierRoutes(pr, db)
 	})
 
 	return r

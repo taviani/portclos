@@ -74,7 +74,7 @@ export default function MaisonInfosScreen() {
   if (!house) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-        <Stack.Screen options={{ title: 'Infos' }} />
+        <Stack.Screen options={{ title: 'Réglages' }} />
         <Text style={{ color: theme.colors.onSurfaceVariant }}>Aucune maison.</Text>
       </View>
     );
@@ -98,7 +98,7 @@ export default function MaisonInfosScreen() {
       style={{ backgroundColor: theme.colors.background }}
       contentContainerStyle={styles.container}
     >
-      <Stack.Screen options={{ title: 'Infos maison' }} />
+      <Stack.Screen options={{ title: 'Réglages' }} />
         <Text
           variant="headlineSmall"
           style={{
@@ -245,7 +245,7 @@ export default function MaisonInfosScreen() {
             variant="bodySmall"
             style={{ color: theme.colors.outline, marginTop: 24, lineHeight: 18 }}
           >
-            Seul un propriétaire peut modifier ces infos.
+            Seul un propriétaire peut modifier ces réglages.
           </Text>
         ) : null}
 
