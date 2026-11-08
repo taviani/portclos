@@ -6,9 +6,10 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { type Href, Stack, router } from 'expo-router';
 import { Button, Text, TextInput } from 'react-native-paper';
 
+import { MenuRow } from '@/components/MenuRow';
 import { useCurrentHouse, useUpdateHouse } from '@/hooks/useHouses';
 import { useAppTheme } from '@/theme/paper';
 
@@ -34,19 +35,23 @@ export default function MaisonInfosScreen() {
   }, [house, editingAddress, editingBeds]);
 
   const startAddressEdit = useCallback(() => {
+    if (!isOwner) return;
     setAddressDraft(house?.address ?? '');
+    setEditingBeds(false);
     setEditingAddress(true);
     setSaved(null);
     setError(null);
-  }, [house?.address]);
+  }, [house?.address, isOwner]);
 
   const startBedsEdit = useCallback(() => {
+    if (!isOwner) return;
     setSingleBedsDraft(String(house?.single_beds ?? 0));
     setDoubleBedsDraft(String(house?.double_beds ?? 0));
+    setEditingAddress(false);
     setEditingBeds(true);
     setSaved(null);
     setError(null);
-  }, [house?.double_beds, house?.single_beds]);
+  }, [house?.double_beds, house?.single_beds, isOwner]);
 
   const saveAddress = useCallback(async () => {
     setError(null);
@@ -112,30 +117,31 @@ export default function MaisonInfosScreen() {
         automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       >
         <Text
-          variant="headlineSmall"
+          variant="titleMedium"
           style={{
-            color: theme.colors.onBackground,
-            fontWeight: '800',
-            letterSpacing: -0.3,
+            color: theme.colors.onSurfaceVariant,
+            fontWeight: '600',
+            marginBottom: 20,
           }}
         >
           {house.name}
-        </Text>
-        <Text
-          variant="bodyMedium"
-          style={{ color: theme.colors.onSurfaceVariant, marginTop: 6, marginBottom: 28 }}
-        >
-          Adresse et capacité — utilisées pour les présences et la vie de la maison.
         </Text>
 
         <Text
           variant="labelLarge"
           style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}
         >
-          Adresse
+          Maison
         </Text>
-        {editingAddress && isOwner ? (
-          <View style={styles.form}>
+
+        <MenuRow
+          title="Adresse"
+          subtitle={address || 'Non renseignée'}
+          icon="map-marker-outline"
+          onPress={startAddressEdit}
+        />
+        {editingAddress ? (
+          <View style={[styles.editor, { backgroundColor: theme.colors.elevation.level1 }]}>
             <TextInput
               mode="outlined"
               label="Adresse"
@@ -150,7 +156,7 @@ export default function MaisonInfosScreen() {
               </Button>
               <Button
                 compact
-                mode="contained-tonal"
+                mode="contained"
                 loading={updateHouse.isPending}
                 onPress={() => void saveAddress()}
               >
@@ -158,42 +164,16 @@ export default function MaisonInfosScreen() {
               </Button>
             </View>
           </View>
-        ) : (
-          <View style={styles.block}>
-            <Text
-              variant="bodyLarge"
-              style={{
-                color: address ? theme.colors.onBackground : theme.colors.outline,
-                lineHeight: 24,
-              }}
-            >
-              {address || 'Non renseignée'}
-            </Text>
-            {isOwner ? (
-              <Button
-                mode="text"
-                compact
-                icon="pencil-outline"
-                onPress={startAddressEdit}
-                style={{ alignSelf: 'flex-start', marginTop: 4, marginLeft: -8 }}
-              >
-                {address ? 'Modifier' : 'Définir'}
-              </Button>
-            ) : null}
-          </View>
-        )}
+        ) : null}
 
-        <Text
-          variant="labelLarge"
-          style={[
-            styles.sectionLabel,
-            { color: theme.colors.onSurfaceVariant, marginTop: 28 },
-          ]}
-        >
-          Capacité
-        </Text>
-        {editingBeds && isOwner ? (
-          <View style={styles.form}>
+        <MenuRow
+          title="Capacité"
+          subtitle={bedLabel}
+          icon="bed-outline"
+          onPress={startBedsEdit}
+        />
+        {editingBeds ? (
+          <View style={[styles.editor, { backgroundColor: theme.colors.elevation.level1 }]}>
             <View style={styles.bedRow}>
               <TextInput
                 mode="outlined"
@@ -218,7 +198,7 @@ export default function MaisonInfosScreen() {
               </Button>
               <Button
                 compact
-                mode="contained-tonal"
+                mode="contained"
                 loading={updateHouse.isPending}
                 onPress={() => void saveBeds()}
               >
@@ -226,46 +206,35 @@ export default function MaisonInfosScreen() {
               </Button>
             </View>
           </View>
-        ) : (
-          <View style={styles.block}>
-            <Text
-              variant="bodyLarge"
-              style={{
-                color:
-                  s + d > 0 ? theme.colors.onBackground : theme.colors.outline,
-                lineHeight: 24,
-              }}
-            >
-              {bedLabel}
-            </Text>
-            {isOwner ? (
-              <Button
-                mode="text"
-                compact
-                icon="pencil-outline"
-                onPress={startBedsEdit}
-                style={{ alignSelf: 'flex-start', marginTop: 4, marginLeft: -8 }}
-              >
-                {s + d > 0 ? 'Modifier' : 'Définir'}
-              </Button>
-            ) : null}
-          </View>
-        )}
+        ) : null}
 
         {!isOwner ? (
           <Text
             variant="bodySmall"
-            style={{ color: theme.colors.outline, marginTop: 24, lineHeight: 18 }}
+            style={{ color: theme.colors.outline, marginTop: 4, marginBottom: 8, lineHeight: 18 }}
           >
-            Seul un propriétaire peut modifier ces réglages.
+            Seul un propriétaire peut modifier l’adresse et la capacité.
           </Text>
         ) : null}
 
+        <Text
+          variant="labelLarge"
+          style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant, marginTop: 20 }]}
+        >
+          Fermeture
+        </Text>
+        <MenuRow
+          title="Checklist"
+          subtitle="Étapes et photos d’indication"
+          icon="clipboard-list-outline"
+          onPress={() => router.push('/(tabs)/maison/checklist-modele' as Href)}
+        />
+
         {saved ? (
-          <Text style={{ color: theme.colors.primary, marginTop: 20 }}>{saved}</Text>
+          <Text style={{ color: theme.colors.primary, marginTop: 16 }}>{saved}</Text>
         ) : null}
         {error ? (
-          <Text style={{ color: theme.colors.error, marginTop: 20 }}>{error}</Text>
+          <Text style={{ color: theme.colors.error, marginTop: 16 }}>{error}</Text>
         ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
@@ -286,12 +255,14 @@ const styles = StyleSheet.create({
   sectionLabel: {
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  block: {
-    gap: 0,
-  },
-  form: {
+  editor: {
+    marginTop: -4,
+    marginBottom: 10,
+    marginLeft: 6,
+    borderRadius: 14,
+    padding: 12,
     gap: 10,
   },
   actions: {
