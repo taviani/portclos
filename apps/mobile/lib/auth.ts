@@ -1,10 +1,10 @@
 import * as AuthSession from 'expo-auth-session';
 import * as Linking from 'expo-linking';
-import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 
 import { isNetworkError, send } from '@/lib/api/http';
+import * as secureStorage from '@/lib/secureStorage';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -35,12 +35,18 @@ export function isAuthConfigured(): boolean {
   return raw !== '' && !raw.includes('example.com');
 }
 
+/**
+ * Exact match against kde-auth allowlist. Do not rebuild via makeRedirectUri:
+ * Expo Go / some clients emit portclos:///… or exp://… which auth rejects.
+ */
 export function redirectUri(): string {
-  return AuthSession.makeRedirectUri({
-    scheme: 'portclos',
-    path: 'auth/callback',
-    native: 'portclos://auth/callback',
-  });
+  if (Platform.OS === 'web') {
+    return AuthSession.makeRedirectUri({
+      scheme: 'portclos',
+      path: 'auth/callback',
+    });
+  }
+  return 'portclos://auth/callback';
 }
 
 /** True when the URL is our OAuth redirect (portclos://auth/callback?…). */
@@ -102,11 +108,11 @@ export async function startLoginPrompt(
 export const AUTH_SCOPES = ['openid', 'email', 'offline_access'] as const;
 
 export async function getAccessToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(ACCESS_KEY);
+  return secureStorage.getItem(ACCESS_KEY);
 }
 
 export async function getRefreshToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(REFRESH_KEY);
+  return secureStorage.getItem(REFRESH_KEY);
 }
 
 /** Local-dev sentinel used when AUTH_DISABLED is on. */
@@ -148,18 +154,18 @@ export function isAccessTokenExpired(token: string, skewMs = EXPIRY_SKEW_MS): bo
 
 export async function setAccessToken(token: string | null): Promise<void> {
   if (!token) {
-    await SecureStore.deleteItemAsync(ACCESS_KEY);
+    await secureStorage.deleteItem(ACCESS_KEY);
     return;
   }
-  await SecureStore.setItemAsync(ACCESS_KEY, token);
+  await secureStorage.setItem(ACCESS_KEY, token);
 }
 
 export async function setRefreshToken(token: string | null): Promise<void> {
   if (!token) {
-    await SecureStore.deleteItemAsync(REFRESH_KEY);
+    await secureStorage.deleteItem(REFRESH_KEY);
     return;
   }
-  await SecureStore.setItemAsync(REFRESH_KEY, token);
+  await secureStorage.setItem(REFRESH_KEY, token);
 }
 
 /** Persist or clear the full token bundle (access + optional refresh). */
@@ -183,35 +189,35 @@ export async function clearAllTokens(): Promise<void> {
 }
 
 export async function getCurrentHouseId(): Promise<string | null> {
-  return SecureStore.getItemAsync(HOUSE_KEY);
+  return secureStorage.getItem(HOUSE_KEY);
 }
 
 export async function setCurrentHouseId(id: string | null): Promise<void> {
   if (!id) {
-    await SecureStore.deleteItemAsync(HOUSE_KEY);
+    await secureStorage.deleteItem(HOUSE_KEY);
     return;
   }
-  await SecureStore.setItemAsync(HOUSE_KEY, id);
+  await secureStorage.setItem(HOUSE_KEY, id);
 }
 
 /** Persist PKCE verifier so /auth/callback can finish login if the in-memory request is gone. */
 export async function setPkceVerifier(verifier: string | null): Promise<void> {
   if (!verifier) {
-    await SecureStore.deleteItemAsync(PKCE_KEY);
+    await secureStorage.deleteItem(PKCE_KEY);
     return;
   }
-  await SecureStore.setItemAsync(PKCE_KEY, verifier);
+  await secureStorage.setItem(PKCE_KEY, verifier);
 }
 
 export async function hasPkceVerifier(): Promise<boolean> {
-  const verifier = await SecureStore.getItemAsync(PKCE_KEY);
+  const verifier = await secureStorage.getItem(PKCE_KEY);
   return verifier != null;
 }
 
 export async function takePkceVerifier(): Promise<string | null> {
-  const verifier = await SecureStore.getItemAsync(PKCE_KEY);
+  const verifier = await secureStorage.getItem(PKCE_KEY);
   if (verifier) {
-    await SecureStore.deleteItemAsync(PKCE_KEY);
+    await secureStorage.deleteItem(PKCE_KEY);
   }
   return verifier;
 }

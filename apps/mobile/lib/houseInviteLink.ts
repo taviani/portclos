@@ -1,5 +1,6 @@
 import * as Linking from 'expo-linking';
-import * as SecureStore from 'expo-secure-store';
+
+import * as secureStorage from '@/lib/secureStorage';
 
 const PENDING_KEY = 'portclos.pending_house_invite_token';
 
@@ -27,20 +28,20 @@ export function parseHouseInviteToken(url: string): string | null {
 
 export async function setPendingHouseInviteToken(token: string | null): Promise<void> {
   if (!token) {
-    await SecureStore.deleteItemAsync(PENDING_KEY);
+    await secureStorage.deleteItem(PENDING_KEY);
     return;
   }
-  await SecureStore.setItemAsync(PENDING_KEY, token);
+  await secureStorage.setItem(PENDING_KEY, token);
 }
 
 export async function takePendingHouseInviteToken(): Promise<string | null> {
-  const raw = await SecureStore.getItemAsync(PENDING_KEY);
+  const raw = await secureStorage.getItem(PENDING_KEY);
   if (raw) {
-    await SecureStore.deleteItemAsync(PENDING_KEY);
+    await secureStorage.deleteItem(PENDING_KEY);
   }
   return raw;
 }
 
 export async function peekPendingHouseInviteToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(PENDING_KEY);
+  return secureStorage.getItem(PENDING_KEY);
 }

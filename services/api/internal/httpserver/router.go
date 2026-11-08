@@ -23,12 +23,16 @@ type Deps struct {
 	Mailer          mail.Mailer
 	HouseInviteLink string
 	AndroidPackage  string // Play package for intent:// open links (default com.portclos.app)
+	CORSOrigins     []string
 }
 
 func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store, deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	if len(deps.CORSOrigins) > 0 {
+		r.Use(corsMiddleware(deps.CORSOrigins))
+	}
 	r.Use(accessAndUsage(db))
 	r.Use(recoverJSON)
 

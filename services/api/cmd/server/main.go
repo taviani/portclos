@@ -72,6 +72,7 @@ func main() {
 			Mailer:          mailer,
 			HouseInviteLink: cfg.HouseInviteLink,
 			AndroidPackage:  cfg.AndroidPackage,
+			CORSOrigins:     cfg.CORSOrigins,
 		}),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
