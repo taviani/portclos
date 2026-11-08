@@ -11,3 +11,9 @@ Décisions produit et notes qui doivent vivre avec le code (pas seulement dans u
 | [product/patches/](product/patches/) | Patch companion pour `kde-auth` (`offline_access`) |
 
 Quand une discussion aboutit à une décision : l’écrire ici via une PR.
+
+## Méthode de travail
+
+Voir [le workflow SDD et PR](development/workflow.md) et le
+[plan membres et navigation](plans/house-members.md). Les règles communes aux
+agents sont dans [AGENTS.md](../AGENTS.md).
