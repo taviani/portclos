@@ -114,6 +114,7 @@ Photo uploads land in the `portclos_uploads` Docker volume (`UPLOAD_DIR=/data/up
 | `DEPLOY_USER` | SSH username |
 | `DEPLOY_HOST` | Server hostname |
 | `DEPLOY_PATH` | Absolute deploy directory on the server |
+| `CORS_ORIGINS` | (Optional) Comma-separated browser Origins for Expo web; synced into the server `.env` at deploy. Leave unset for native-only. |
 
 Never put hostnames, paths, or passwords in the repository.
 
@@ -124,6 +125,7 @@ Never put hostnames, paths, or passwords in the repository.
    - `AUTH_ISSUER` — your OIDC issuer URL
    - `AUTH_DISABLED=false` (or omit)
    - Strong `POSTGRES_*` credentials
+   - Optional browser CORS: prefer GitHub secret `CORS_ORIGINS` (deploy syncs it); do not hardcode real Origins in git
 3. Do **not** commit or rsync that `.env` (CI excludes it).
 4. Ensure `docker-compose` is available to the deploy user.
 5. TLS / reverse proxy for the API stays in your host nginx config (not in this repo).

@@ -23,7 +23,8 @@ type Deps struct {
 	Mailer          mail.Mailer
 	HouseInviteLink string
 	AndroidPackage  string // Play package for intent:// open links (default com.portclos.app)
-	CORSOrigins     []string
+	// CORSOrigins from env/secret CORS_ORIGINS (comma-separated). Empty = native-only.
+	CORSOrigins []string
 }
 
 func NewRouter(validator *auth.Validator, db *store.Store, files *media.Store, deps Deps) http.Handler {
