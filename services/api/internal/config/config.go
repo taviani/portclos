@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -18,8 +19,9 @@ type Config struct {
 	SMTPUsername    string
 	SMTPPassword    string
 	SMTPFrom        string
-	HouseInviteLink string // HTTPS landing or deep link base for invite emails
-	AndroidPackage  string // Play package for Android intent:// open page
+	HouseInviteLink string   // HTTPS landing or deep link base for invite emails
+	AndroidPackage  string   // Play package for Android intent:// open page
+	CORSOrigins     []string // browser Origins allowed (Expo web); empty = native-only
 }
 
 func Load() (Config, error) {
@@ -64,6 +66,15 @@ func Load() (Config, error) {
 	if androidPkg == "" {
 		androidPkg = "com.portclos.app"
 	}
+	var corsOrigins []string
+	if raw := strings.TrimSpace(os.Getenv("CORS_ORIGINS")); raw != "" {
+		for _, part := range strings.Split(raw, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				corsOrigins = append(corsOrigins, part)
+			}
+		}
+	}
 	return Config{
 		Port:            port,
 		AuthIssuer:      issuer,
@@ -78,5 +89,6 @@ func Load() (Config, error) {
 		SMTPFrom:        os.Getenv("SMTP_FROM"),
 		HouseInviteLink: inviteLink,
 		AndroidPackage:  androidPkg,
+		CORSOrigins:     corsOrigins,
 	}, nil
 }

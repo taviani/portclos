@@ -239,7 +239,7 @@ export default function LoginScreen() {
       </Button>
       {__DEV__ ? (
         <Button mode="text" onPress={onLocalDev} disabled={busy} style={{ marginTop: 12 }}>
-          Mode local (AUTH_DISABLED)
+          Mode local (API AUTH_DISABLED)
         </Button>
       ) : null}
       {__DEV__ && redirect ? (
