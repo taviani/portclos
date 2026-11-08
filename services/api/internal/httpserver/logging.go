@@ -165,6 +165,8 @@ func writeClosingItemErr(w http.ResponseWriter, r *http.Request, err error) {
 		writeAPIError(w, r, http.StatusBadRequest, "cannot_skip_required", nil)
 	case errors.Is(err, store.ErrRequiredPending):
 		writeAPIError(w, r, http.StatusBadRequest, "required_pending", nil)
+	case errors.Is(err, store.ErrNotesPending):
+		writeAPIError(w, r, http.StatusBadRequest, "notes_pending", nil)
 	case err != nil && err.Error() == "invalid status":
 		writeAPIError(w, r, http.StatusBadRequest, "invalid_status", nil)
 	default:

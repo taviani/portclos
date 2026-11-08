@@ -25,6 +25,10 @@ export type Closing = {
   house_id: string;
   started_by: string;
   status: 'open' | 'completed' | 'cancelled';
+  /** Global notes for this closing run (may be empty after « Rien à signaler »). */
+  notes: string;
+  /** True once the notes step was explicitly confirmed. */
+  notes_done: boolean;
   started_at: string;
   completed_at?: string;
 };
@@ -133,6 +137,21 @@ export async function updateClosingItemStatus(
   });
 }
 
+export async function updateClosingNotes(
+  accessToken: string,
+  closingId: string,
+  notes: string,
+): Promise<ClosingDetail> {
+  return getJSON(`/closings/${closingId}`, {
+    method: 'PATCH',
+    headers: {
+      ...authHeaders(accessToken),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ notes }),
+  });
+}
+
 export async function completeClosing(
   accessToken: string,
   closingId: string,
@@ -151,6 +170,23 @@ export async function cancelClosing(
     method: 'POST',
     headers: authHeaders(accessToken),
   });
+}
+
+export async function deleteClosing(accessToken: string, closingId: string): Promise<void> {
+  const res = await send(`${apiBaseUrl()}/closings/${closingId}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) detail = body.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
 }
 
 export async function uploadChecklistPhoto(

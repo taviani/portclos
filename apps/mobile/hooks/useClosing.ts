@@ -6,12 +6,14 @@ import {
   createChecklistItem,
   deleteChecklistItem,
   deleteChecklistPhoto,
+  deleteClosing,
   fetchChecklistItems,
   fetchClosing,
   fetchClosings,
   startClosing,
   updateChecklistItem,
   updateClosingItemStatus,
+  updateClosingNotes,
   uploadChecklistPhoto,
   type ClosingItem,
 } from '@/lib/api';
@@ -85,6 +87,23 @@ export function useUpdateClosingItem(closingId: string | undefined) {
   });
 }
 
+export function useUpdateClosingNotes(closingId: string | undefined, houseId: string | undefined) {
+  const { token } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (notes: string) => {
+      if (!token || !closingId) throw new Error('unauthorized');
+      return updateClosingNotes(token, closingId, notes);
+    },
+    onSuccess: async (detail) => {
+      await qc.setQueryData(queryKeys.closing(detail.id), detail);
+      if (houseId) {
+        await qc.invalidateQueries({ queryKey: queryKeys.closings(houseId) });
+      }
+    },
+  });
+}
+
 export function useCompleteClosing(closingId: string | undefined, houseId: string | undefined) {
   const { token } = useSession();
   const qc = useQueryClient();
@@ -112,6 +131,24 @@ export function useCancelClosing(closingId: string | undefined, houseId: string 
     },
     onSuccess: async (detail) => {
       await qc.setQueryData(queryKeys.closing(detail.id), detail);
+      if (houseId) {
+        await qc.invalidateQueries({ queryKey: queryKeys.closings(houseId) });
+      }
+    },
+  });
+}
+
+export function useDeleteClosing(houseId: string | undefined) {
+  const { token } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (closingId: string) => {
+      if (!token) throw new Error('unauthorized');
+      await deleteClosing(token, closingId);
+      return closingId;
+    },
+    onSuccess: async (closingId) => {
+      await qc.removeQueries({ queryKey: queryKeys.closing(closingId) });
       if (houseId) {
         await qc.invalidateQueries({ queryKey: queryKeys.closings(houseId) });
       }
