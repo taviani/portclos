@@ -69,10 +69,12 @@ CREATE TABLE IF NOT EXISTS houses (
 CREATE TABLE IF NOT EXISTS house_members (
   house_id UUID NOT NULL REFERENCES houses (id) ON DELETE CASCADE,
   user_sub TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('owner', 'member')),
+  role TEXT NOT NULL CHECK (role IN ('member')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (house_id, user_sub)
 );
+-- Normalize memberships created before the single-member-role model.
+UPDATE house_members SET role = 'member' WHERE role = 'owner';
 CREATE INDEX IF NOT EXISTS house_members_user_sub_idx ON house_members (user_sub);
 CREATE TABLE IF NOT EXISTS occupations (
   id UUID PRIMARY KEY,
@@ -168,13 +170,13 @@ RETURNING id::text, name, address, single_beds, double_beds, bed_capacity, creat
 	}
 	if _, err := tx.Exec(ctx, `
 INSERT INTO house_members (house_id, user_sub, role)
-VALUES ($1, $2, 'owner')`, id, userSub); err != nil {
+VALUES ($1, $2, 'member')`, id, userSub); err != nil {
 		return House{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return House{}, err
 	}
-	h.Role = "owner"
+	h.Role = "member"
 	return h, nil
 }
 

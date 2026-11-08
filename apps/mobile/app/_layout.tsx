@@ -14,7 +14,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { AnimatedSplash } from '@/components/AnimatedSplash';
-import { useColorScheme } from '@/components/useColorScheme';
 import { useMe } from '@/hooks/useHouses';
 import { hasDisplayName } from '@/lib/displayName';
 import { appEntryHref } from '@/lib/navigation';
@@ -22,6 +21,7 @@ import { reportClientEvent } from '@/lib/telemetry';
 import { AppProviders } from '@/providers/AppProviders';
 import { useSession } from '@/providers/SessionProvider';
 import { Lighthouse } from '@/theme/lighthouse';
+import { useAppTheme } from '@/theme/paper';
 
 export const unstable_settings = {
   // Always enter via index so cold start / state restore cannot skip to a
@@ -120,10 +120,23 @@ function SplashGate({
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  const theme = useAppTheme();
+  const base = theme.dark ? DarkTheme : DefaultTheme;
+  const navigationTheme = {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: theme.colors.primary,
+      background: theme.colors.background,
+      card: theme.colors.surface,
+      text: theme.colors.onSurface,
+      border: theme.colors.outlineVariant,
+      notification: theme.colors.error,
+    },
+  };
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={navigationTheme}>
       <AuthGate>
         <DisplayNameGate>
           <RootStack />
@@ -178,7 +191,7 @@ function AuthGate({ children }: { children: ReactNode }) {
   const root = segments[0];
   const onAuth = root === 'login' || root === 'auth';
   // Root `/` is handled by app/index.tsx; do not fight that redirect here.
-  const onIndex = root === undefined || root === 'index';
+  const onIndex = root === undefined;
 
   let loginRedirect: ReactNode = null;
   if (token && onAuth) {
@@ -211,7 +224,7 @@ function DisplayNameGate({ children }: { children: ReactNode }) {
   }
 
   const root = segments[0];
-  const onIndex = root === undefined || root === 'index';
+  const onIndex = root === undefined;
   const onDisplayName = root === 'display-name';
   // Let login / cold-start index finish their own redirects first.
   if (root === 'login' || root === 'auth' || onIndex) {

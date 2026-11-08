@@ -139,27 +139,3 @@ export async function acceptHouseInvite(
     body: JSON.stringify({ token }),
   });
 }
-
-export async function removeHouseMember(
-  accessToken: string,
-  houseId: string,
-  userSub: string,
-): Promise<void> {
-  const res = await send(
-    `${apiBaseUrl()}/houses/${houseId}/members/${encodeURIComponent(userSub)}`,
-    {
-      method: 'DELETE',
-      headers: authHeaders(accessToken),
-    },
-  );
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) detail = body.error;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail);
-  }
-}

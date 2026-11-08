@@ -14,10 +14,9 @@ import { KeyboardScreen } from '@/components/KeyboardScreen';
 import {
   useCreateHouseInvite,
   useHouseInvites,
-  useRemoveHouseMember,
   useRevokeHouseInvite,
 } from '@/hooks/useHouseInvites';
-import { useCurrentHouse, useHouseMembers, useMe } from '@/hooks/useHouses';
+import { useCurrentHouse, useHouseMembers } from '@/hooks/useHouses';
 import { useSession } from '@/providers/SessionProvider';
 import { useAppTheme } from '@/theme/paper';
 
@@ -30,11 +29,9 @@ function inviteErrorLabel(raw: string): string {
     case 'invite_pending':
       return 'Une invitation est déjà en attente pour cet e-mail';
     case 'forbidden':
-      return 'Seul un propriétaire peut inviter';
+      return 'Tu dois être membre de la maison pour inviter';
     case 'mail_failed':
       return 'Invitation créée, mais l’envoi du mail a échoué';
-    case 'cannot_remove_last_owner':
-      return 'Impossible de retirer le dernier propriétaire';
     default:
       return raw;
   }
@@ -44,14 +41,11 @@ export default function InviterScreen() {
   const theme = useAppTheme();
   const navigation = useNavigation();
   const { token, ready } = useSession();
-  const me = useMe();
   const { house, isLoading: houseLoading } = useCurrentHouse();
-  const isOwner = house?.role === 'owner';
-  const invites = useHouseInvites(house?.id, isOwner);
+  const invites = useHouseInvites(house?.id);
   const members = useHouseMembers(house?.id);
   const createInvite = useCreateHouseInvite(house?.id);
   const revokeInvite = useRevokeHouseInvite(house?.id);
-  const removeMember = useRemoveHouseMember(house?.id);
 
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -93,24 +87,6 @@ export default function InviterScreen() {
     [revokeInvite],
   );
 
-  const onRemove = useCallback(
-    (userSub: string, label: string) => {
-      Alert.alert('Retirer ce membre ?', label, [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Retirer',
-          style: 'destructive',
-          onPress: () => {
-            void removeMember.mutateAsync(userSub).catch((e) => {
-              setError(inviteErrorLabel(e instanceof Error ? e.message : 'échec'));
-            });
-          },
-        },
-      ]);
-    },
-    [removeMember],
-  );
-
   if (!ready) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
@@ -139,18 +115,6 @@ export default function InviterScreen() {
       </View>
     );
   }
-
-  if (!isOwner) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant }}>
-          Seul un propriétaire peut inviter des membres.
-        </Text>
-      </View>
-    );
-  }
-
-  const mySub = me.data?.sub;
 
   return (
     <KeyboardScreen
@@ -231,19 +195,11 @@ export default function InviterScreen() {
       ) : (
         (members.data ?? []).map((m) => {
           const label = m.display_name?.trim() || m.email || m.user_sub;
-          const canRemove = m.user_sub !== mySub;
           return (
             <List.Item
               key={m.user_sub}
               title={label}
-              description={m.role === 'owner' ? 'Propriétaire' : 'Membre'}
-              right={() =>
-                canRemove ? (
-                  <Button compact onPress={() => onRemove(m.user_sub, label)} textColor={theme.colors.error}>
-                    Retirer
-                  </Button>
-                ) : null
-              }
+              description="Membre"
               style={styles.listRow}
             />
           );

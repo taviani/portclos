@@ -17,7 +17,6 @@ export default function MaisonInfosScreen() {
   const theme = useAppTheme();
   const { house } = useCurrentHouse();
   const updateHouse = useUpdateHouse(house?.id);
-  const isOwner = house?.role === 'owner';
 
   const [addressDraft, setAddressDraft] = useState('');
   const [singleBedsDraft, setSingleBedsDraft] = useState('0');
@@ -35,23 +34,21 @@ export default function MaisonInfosScreen() {
   }, [house, editingAddress, editingBeds]);
 
   const startAddressEdit = useCallback(() => {
-    if (!isOwner) return;
     setAddressDraft(house?.address ?? '');
     setEditingBeds(false);
     setEditingAddress(true);
     setSaved(null);
     setError(null);
-  }, [house?.address, isOwner]);
+  }, [house?.address]);
 
   const startBedsEdit = useCallback(() => {
-    if (!isOwner) return;
     setSingleBedsDraft(String(house?.single_beds ?? 0));
     setDoubleBedsDraft(String(house?.double_beds ?? 0));
     setEditingAddress(false);
     setEditingBeds(true);
     setSaved(null);
     setError(null);
-  }, [house?.double_beds, house?.single_beds, isOwner]);
+  }, [house?.double_beds, house?.single_beds]);
 
   const saveAddress = useCallback(async () => {
     setError(null);
@@ -206,15 +203,6 @@ export default function MaisonInfosScreen() {
               </Button>
             </View>
           </View>
-        ) : null}
-
-        {!isOwner ? (
-          <Text
-            variant="bodySmall"
-            style={{ color: theme.colors.outline, marginTop: 4, marginBottom: 8, lineHeight: 18 }}
-          >
-            Seul un propriétaire peut modifier l’adresse et la capacité.
-          </Text>
         ) : null}
 
         <Text

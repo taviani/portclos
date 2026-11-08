@@ -43,10 +43,10 @@ type CapacityWarning struct {
 }
 
 type DayLoad struct {
-	Day       string `json:"day"`
-	Headcount int    `json:"headcount"`
-	Rooms     int    `json:"rooms"`
-	OverCapacity bool `json:"over_capacity"`
+	Day          string `json:"day"`
+	Headcount    int    `json:"headcount"`
+	Rooms        int    `json:"rooms"`
+	OverCapacity bool   `json:"over_capacity"`
 }
 
 var allowedGuestRelations = map[string]bool{
@@ -267,9 +267,6 @@ SELECT role FROM house_members WHERE house_id = $1 AND user_sub = $2`, houseID, 
 	).Scan(&role)
 	if err != nil {
 		return House{}, err
-	}
-	if role != "owner" {
-		return House{}, fmt.Errorf("forbidden")
 	}
 
 	var h House

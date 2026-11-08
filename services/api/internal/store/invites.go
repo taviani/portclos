@@ -17,13 +17,12 @@ import (
 const houseInviteTTL = 7 * 24 * time.Hour
 
 var (
-	ErrForbidden             = errors.New("forbidden")
-	ErrAlreadyMember         = errors.New("already_member")
-	ErrInvitePending         = errors.New("invite_pending")
-	ErrInviteInvalid         = errors.New("invite_invalid")
-	ErrEmailMismatch         = errors.New("email_mismatch")
-	ErrCannotRemoveLastOwner = errors.New("cannot_remove_last_owner")
-	ErrInvalidEmail          = errors.New("invalid_email")
+	ErrForbidden     = errors.New("forbidden")
+	ErrAlreadyMember = errors.New("already_member")
+	ErrInvitePending = errors.New("invite_pending")
+	ErrInviteInvalid = errors.New("invite_invalid")
+	ErrEmailMismatch = errors.New("email_mismatch")
+	ErrInvalidEmail  = errors.New("invalid_email")
 )
 
 type HouseInvite struct {
@@ -96,7 +95,7 @@ func hashInviteToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *Store) requireHouseOwner(ctx context.Context, houseID, userSub string) error {
+func (s *Store) requireHouseMember(ctx context.Context, houseID, userSub string) error {
 	var role string
 	err := s.pool.QueryRow(ctx, `
 SELECT role FROM house_members WHERE house_id = $1 AND user_sub = $2`, houseID, userSub,
@@ -106,9 +105,6 @@ SELECT role FROM house_members WHERE house_id = $1 AND user_sub = $2`, houseID, 
 			return ErrForbidden
 		}
 		return err
-	}
-	if role != "owner" {
-		return ErrForbidden
 	}
 	return nil
 }
@@ -137,7 +133,7 @@ func (s *Store) CreateHouseInvite(ctx context.Context, houseID, invitedBy, rawEm
 	if err != nil {
 		return HouseInvite{}, "", err
 	}
-	if err := s.requireHouseOwner(ctx, houseID, invitedBy); err != nil {
+	if err := s.requireHouseMember(ctx, houseID, invitedBy); err != nil {
 		return HouseInvite{}, "", err
 	}
 	already, err := s.IsEmailHouseMember(ctx, houseID, email)
@@ -183,7 +179,7 @@ RETURNING id::text, house_id::text, email, role, invited_by, expires_at, created
 }
 
 func (s *Store) ListPendingHouseInvites(ctx context.Context, houseID, userSub string) ([]HouseInvite, error) {
-	if err := s.requireHouseOwner(ctx, houseID, userSub); err != nil {
+	if err := s.requireHouseMember(ctx, houseID, userSub); err != nil {
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `
@@ -214,7 +210,7 @@ ORDER BY created_at DESC`, houseID)
 }
 
 func (s *Store) RevokeHouseInvite(ctx context.Context, houseID, inviteID, userSub string) error {
-	if err := s.requireHouseOwner(ctx, houseID, userSub); err != nil {
+	if err := s.requireHouseMember(ctx, houseID, userSub); err != nil {
 		return err
 	}
 	tag, err := s.pool.Exec(ctx, `
@@ -311,39 +307,6 @@ UPDATE house_invites SET accepted_at = now() WHERE id = $1`, inv.ID); err != nil
 		return House{}, err
 	}
 	return s.GetHouseForMember(ctx, inv.HouseID, userSub)
-}
-
-func (s *Store) RemoveHouseMember(ctx context.Context, houseID, actorSub, targetSub string) error {
-	if err := s.requireHouseOwner(ctx, houseID, actorSub); err != nil {
-		return err
-	}
-	var targetRole string
-	err := s.pool.QueryRow(ctx, `
-SELECT role FROM house_members WHERE house_id = $1 AND user_sub = $2`, houseID, targetSub,
-	).Scan(&targetRole)
-	if err != nil {
-		return err
-	}
-	if targetRole == "owner" {
-		var owners int
-		if err := s.pool.QueryRow(ctx, `
-SELECT COUNT(*)::int FROM house_members
-WHERE house_id = $1 AND role = 'owner'`, houseID).Scan(&owners); err != nil {
-			return err
-		}
-		if owners <= 1 {
-			return ErrCannotRemoveLastOwner
-		}
-	}
-	tag, err := s.pool.Exec(ctx, `
-DELETE FROM house_members WHERE house_id = $1 AND user_sub = $2`, houseID, targetSub)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
-	}
-	return nil
 }
 
 func isUniqueViolation(err error) bool {

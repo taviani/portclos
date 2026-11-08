@@ -532,7 +532,7 @@ export default function CompteScreen() {
           </Button>
         )}
 
-        {activeHouse?.role === 'owner' ? (
+        {activeHouse ? (
           <Button
             mode="outlined"
             icon="account-plus-outline"
