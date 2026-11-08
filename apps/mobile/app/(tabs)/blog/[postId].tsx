@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,6 +13,7 @@ import {
 
 import { AuthedImage } from '@/components/AuthedImage';
 import { PostMetaChips } from '@/components/blog/PostMetaChips';
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import {
   useAddBlogComment,
   useBlogPost,
@@ -53,6 +54,13 @@ export default function BlogPostScreen() {
 
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+
+  const scrollToComment = () => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  };
 
   const data = post.data;
   const isAuthor = !!data && !!me.data && data.author_sub === me.data.sub;
@@ -182,10 +190,10 @@ export default function BlogPostScreen() {
   }
 
   return (
-    <ScrollView
+    <KeyboardScreen
+      ref={scrollRef}
       style={{ backgroundColor: theme.colors.background }}
       contentContainerStyle={styles.pad}
-      keyboardShouldPersistTaps="handled"
     >
       <Text
         variant="headlineSmall"
@@ -309,6 +317,7 @@ export default function BlogPostScreen() {
         label="Ton commentaire"
         value={comment}
         onChangeText={setComment}
+        onFocus={scrollToComment}
         multiline
         style={{ backgroundColor: theme.colors.surface, marginTop: 8 }}
       />
@@ -325,7 +334,7 @@ export default function BlogPostScreen() {
       {error ? (
         <Text style={{ color: theme.colors.error, marginTop: 14 }}>{error}</Text>
       ) : null}
-    </ScrollView>
+    </KeyboardScreen>
   );
 }
 

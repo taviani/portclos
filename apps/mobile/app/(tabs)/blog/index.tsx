@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { type Href, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -15,6 +15,7 @@ import { AuthedImage } from '@/components/AuthedImage';
 import { MemberMentionPicker } from '@/components/blog/MemberMentionPicker';
 import { TagPicker } from '@/components/blog/TagPicker';
 import { BeaconRail } from '@/components/brand/BeaconRail';
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { useBlogPosts, useCreateBlogPost, useUploadBlogPhoto } from '@/hooks/useBlog';
 import { useCurrentHouse, useHouseMembers } from '@/hooks/useHouses';
 import { blogPhotoUrl } from '@/lib/api';
@@ -155,7 +156,10 @@ export default function BlogListScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
+      <KeyboardScreen
+        style={{ backgroundColor: theme.colors.background }}
+        contentContainerStyle={styles.pad}
+      >
         <Text
           variant="bodyLarge"
           style={{ color: theme.colors.onSurfaceVariant, marginBottom: 16, lineHeight: 24 }}
@@ -280,7 +284,7 @@ export default function BlogListScreen() {
         {posts.error instanceof Error ? (
           <Text style={{ color: theme.colors.error, marginTop: 12 }}>{posts.error.message}</Text>
         ) : null}
-      </ScrollView>
+      </KeyboardScreen>
 
       {!composing ? (
         <FAB
