@@ -223,6 +223,10 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 				writeAPIError(w, r, http.StatusConflict, "closing_already_open", nil)
 				return
 			}
+			if errors.Is(err, store.ErrNotPresent) {
+				writeAPIError(w, r, http.StatusConflict, "not_present", nil)
+				return
+			}
 			writeAPIError(w, r, http.StatusInternalServerError, "internal", err)
 			return
 		}
@@ -265,6 +269,33 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 		writeJSON(w, http.StatusOK, it)
 	})
 
+	pr.Patch("/closings/{closingId}", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireClosingMember(w, r, db); !ok {
+			return
+		}
+		var body struct {
+			Notes *string `json:"notes"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
+			return
+		}
+		if body.Notes == nil {
+			writeAPIError(w, r, http.StatusBadRequest, "invalid_json", nil)
+			return
+		}
+		detail, err := db.UpdateClosingNotes(
+			r.Context(),
+			chi.URLParam(r, "closingId"),
+			strings.TrimSpace(*body.Notes),
+		)
+		if err != nil {
+			writeClosingItemErr(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, detail)
+	})
+
 	pr.Post("/closings/{closingId}/complete", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := requireClosingMember(w, r, db); !ok {
 			return
@@ -287,6 +318,22 @@ func mountClosingRoutes(pr chi.Router, db *store.Store, files *media.Store) {
 			return
 		}
 		writeJSON(w, http.StatusOK, detail)
+	})
+
+	pr.Delete("/closings/{closingId}", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireClosingMember(w, r, db); !ok {
+			return
+		}
+		err := db.DeleteClosing(r.Context(), chi.URLParam(r, "closingId"))
+		if err != nil {
+			if errors.Is(err, store.ErrClosingStillOpen) {
+				writeAPIError(w, r, http.StatusConflict, "closing_still_open", nil)
+				return
+			}
+			writeStoreErr(w, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	pr.Get("/closing-photos/{photoId}", func(w http.ResponseWriter, r *http.Request) {

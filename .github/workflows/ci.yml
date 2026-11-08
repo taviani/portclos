@@ -213,6 +213,25 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
+      - name: Sync CORS_ORIGINS onto server .env
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+        run: |
+          if [ -z "${CORS_ORIGINS}" ]; then
+            echo "CORS_ORIGINS secret unset — leaving server .env unchanged"
+            exit 0
+          fi
+          # Pipe the value over SSH stdin so it never appears in remote argv / logs.
+          printf '%s' "$CORS_ORIGINS" | ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "umask 077; cd \"${DEPLOY_PATH}\" && touch .env && \
+             grep -v '^CORS_ORIGINS=' .env > .env.portclos.tmp && \
+             mv .env.portclos.tmp .env && \
+             { printf 'CORS_ORIGINS='; cat; printf '\n'; } >> .env"
+          echo "CORS_ORIGINS synced to server .env"
+
       - name: Deploy to server
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}

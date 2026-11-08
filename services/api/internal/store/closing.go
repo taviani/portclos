@@ -14,7 +14,10 @@ var (
 	ErrClosingAlreadyOpen = errors.New("closing already open")
 	ErrClosingNotOpen     = errors.New("closing not open")
 	ErrRequiredPending    = errors.New("required items pending")
+	ErrNotesPending       = errors.New("notes pending")
 	ErrSkipRequired       = errors.New("cannot skip required item")
+	ErrNotPresent         = errors.New("not present")
+	ErrClosingStillOpen   = errors.New("closing still open")
 )
 
 type ChecklistItemPhoto struct {
@@ -41,6 +44,8 @@ type Closing struct {
 	HouseID     string     `json:"house_id"`
 	StartedBy   string     `json:"started_by"`
 	Status      string     `json:"status"`
+	Notes       string     `json:"notes"`
+	NotesDone   bool       `json:"notes_done"`
 	StartedAt   time.Time  `json:"started_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
@@ -129,6 +134,10 @@ ALTER TABLE closings DROP CONSTRAINT IF EXISTS closings_status_check;
 ALTER TABLE closings
   ADD CONSTRAINT closings_status_check
   CHECK (status IN ('open', 'completed', 'cancelled'));
+ALTER TABLE closings
+  ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE closings
+  ADD COLUMN IF NOT EXISTS notes_done BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS closings_house_started_idx
   ON closings (house_id, started_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS closings_one_open_per_house
@@ -152,6 +161,20 @@ CREATE INDEX IF NOT EXISTS closing_items_closing_idx
   ON closing_items (closing_id, sort_order);
 `)
 	return err
+}
+
+// UserPresentToday reports whether userSub has an occupation covering today for the house.
+func (s *Store) UserPresentToday(ctx context.Context, houseID, userSub string) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `
+SELECT EXISTS (
+  SELECT 1 FROM occupations
+  WHERE house_id = $1::uuid
+    AND user_sub = $2
+    AND start_date <= CURRENT_DATE
+    AND end_date >= CURRENT_DATE
+)`, houseID, userSub).Scan(&ok)
+	return ok, err
 }
 
 func (s *Store) EnsureDefaultChecklist(ctx context.Context, houseID string) error {
@@ -203,7 +226,7 @@ func (s *Store) ListChecklistItems(ctx context.Context, houseID string) ([]Check
 SELECT id::text, house_id::text, label, description, optional, sort_order, created_at
 FROM closing_checklist_items
 WHERE house_id = $1
-ORDER BY sort_order ASC, created_at ASC`, houseID)
+ORDER BY optional ASC, sort_order ASC, created_at ASC`, houseID)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +326,7 @@ SELECT house_id::text FROM closing_checklist_items WHERE id = $1`, itemID).Scan(
 
 func (s *Store) ListClosings(ctx context.Context, houseID string) ([]Closing, error) {
 	rows, err := s.pool.Query(ctx, `
-SELECT id::text, house_id::text, started_by, status, started_at, completed_at
+SELECT id::text, house_id::text, started_by, status, notes, notes_done, started_at, completed_at
 FROM closings
 WHERE house_id = $1
 ORDER BY started_at DESC
@@ -316,7 +339,7 @@ LIMIT 50`, houseID)
 	var out []Closing
 	for rows.Next() {
 		var c Closing
-		if err := rows.Scan(&c.ID, &c.HouseID, &c.StartedBy, &c.Status, &c.StartedAt, &c.CompletedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.HouseID, &c.StartedBy, &c.Status, &c.Notes, &c.NotesDone, &c.StartedAt, &c.CompletedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -354,14 +377,22 @@ SELECT COUNT(*) FROM closings WHERE house_id = $1 AND status = 'open'`, houseID)
 		return ClosingDetail{}, ErrClosingAlreadyOpen
 	}
 
+	present, err := s.UserPresentToday(ctx, houseID, userSub)
+	if err != nil {
+		return ClosingDetail{}, err
+	}
+	if !present {
+		return ClosingDetail{}, ErrNotPresent
+	}
+
 	closingID := uuid.NewString()
 	var c Closing
 	if err := tx.QueryRow(ctx, `
 INSERT INTO closings (id, house_id, started_by, status)
 VALUES ($1, $2, $3, 'open')
-RETURNING id::text, house_id::text, started_by, status, started_at, completed_at`,
+RETURNING id::text, house_id::text, started_by, status, notes, notes_done, started_at, completed_at`,
 		closingID, houseID, userSub,
-	).Scan(&c.ID, &c.HouseID, &c.StartedBy, &c.Status, &c.StartedAt, &c.CompletedAt); err != nil {
+	).Scan(&c.ID, &c.HouseID, &c.StartedBy, &c.Status, &c.Notes, &c.NotesDone, &c.StartedAt, &c.CompletedAt); err != nil {
 		return ClosingDetail{}, err
 	}
 
@@ -393,9 +424,9 @@ SELECT house_id::text FROM closings WHERE id = $1`, closingID).Scan(&houseID)
 func (s *Store) GetClosingDetail(ctx context.Context, closingID string) (ClosingDetail, error) {
 	var c Closing
 	err := s.pool.QueryRow(ctx, `
-SELECT id::text, house_id::text, started_by, status, started_at, completed_at
+SELECT id::text, house_id::text, started_by, status, notes, notes_done, started_at, completed_at
 FROM closings WHERE id = $1`, closingID,
-	).Scan(&c.ID, &c.HouseID, &c.StartedBy, &c.Status, &c.StartedAt, &c.CompletedAt)
+	).Scan(&c.ID, &c.HouseID, &c.StartedBy, &c.Status, &c.Notes, &c.NotesDone, &c.StartedAt, &c.CompletedAt)
 	if err != nil {
 		return ClosingDetail{}, err
 	}
@@ -405,7 +436,7 @@ SELECT id::text, closing_id::text, label, description, optional, sort_order, sta
        template_item_id::text
 FROM closing_items
 WHERE closing_id = $1
-ORDER BY sort_order ASC, label ASC`, closingID)
+ORDER BY optional ASC, sort_order ASC, label ASC`, closingID)
 	if err != nil {
 		return ClosingDetail{}, err
 	}
@@ -504,6 +535,30 @@ WHERE id = $1 AND closing_id = $2`, itemID, closingID, status)
 	return ClosingItem{}, pgx.ErrNoRows
 }
 
+// UpdateClosingNotes sets the global closing notes and marks the notes step done.
+func (s *Store) UpdateClosingNotes(ctx context.Context, closingID, notes string) (ClosingDetail, error) {
+	var closingStatus string
+	err := s.pool.QueryRow(ctx, `
+SELECT status FROM closings WHERE id = $1`, closingID).Scan(&closingStatus)
+	if err != nil {
+		return ClosingDetail{}, err
+	}
+	if closingStatus != "open" {
+		return ClosingDetail{}, ErrClosingNotOpen
+	}
+	tag, err := s.pool.Exec(ctx, `
+UPDATE closings
+SET notes = $2, notes_done = true
+WHERE id = $1 AND status = 'open'`, closingID, notes)
+	if err != nil {
+		return ClosingDetail{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return ClosingDetail{}, ErrClosingNotOpen
+	}
+	return s.GetClosingDetail(ctx, closingID)
+}
+
 func (s *Store) CompleteClosing(ctx context.Context, closingID string) (ClosingDetail, error) {
 	detail, err := s.GetClosingDetail(ctx, closingID)
 	if err != nil {
@@ -520,6 +575,9 @@ func (s *Store) CompleteClosing(ctx context.Context, closingID string) (ClosingD
 			return ClosingDetail{}, ErrRequiredPending
 		}
 	}
+	if !detail.NotesDone {
+		return ClosingDetail{}, ErrNotesPending
+	}
 
 	_, err = s.pool.Exec(ctx, `
 UPDATE closings
@@ -529,6 +587,28 @@ WHERE id = $1 AND status = 'open'`, closingID)
 		return ClosingDetail{}, err
 	}
 	return s.GetClosingDetail(ctx, closingID)
+}
+
+// DeleteClosing removes a past closing (completed or cancelled). Open closings must be cancelled first.
+func (s *Store) DeleteClosing(ctx context.Context, closingID string) error {
+	var status string
+	err := s.pool.QueryRow(ctx, `
+SELECT status FROM closings WHERE id = $1`, closingID).Scan(&status)
+	if err != nil {
+		return err
+	}
+	if status == "open" {
+		return ErrClosingStillOpen
+	}
+	tag, err := s.pool.Exec(ctx, `
+DELETE FROM closings WHERE id = $1 AND status <> 'open'`, closingID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 // CancelClosing abandons an in-progress closing so a new one can start.

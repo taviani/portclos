@@ -1,26 +1,46 @@
-import { useLayoutEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { type Href, router, useNavigation } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { type Href, router } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { Button, IconButton, Text, ActivityIndicator } from 'react-native-paper';
 
 import { BeaconBar } from '@/components/brand/BeaconRail';
 import { LighthouseMark } from '@/components/LighthouseMark';
 import { MenuRow } from '@/components/MenuRow';
-import { useCurrentHouse } from '@/hooks/useHouses';
+import { useClosings } from '@/hooks/useClosing';
+import { useCurrentHouse, useMe } from '@/hooks/useHouses';
+import { monthKey, useOccupations } from '@/hooks/useOccupations';
+import { fermetureState, isUserPresentToday } from '@/lib/fermetureState';
 import { useAppTheme } from '@/theme/paper';
+
+function todayKey(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export default function MaisonHubScreen() {
   const theme = useAppTheme();
-  const navigation = useNavigation();
+  const me = useMe();
   const { house, isLoading, error } = useCurrentHouse();
   const [copied, setCopied] = useState(false);
+  const month = useMemo(() => monthKey(new Date()), []);
+  const occupations = useOccupations(house?.id, month);
+  const closings = useClosings(house?.id);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      title: house?.name ?? 'Maison',
-    });
-  }, [navigation, house?.name]);
+  const todayHeadcount = useMemo(() => {
+    const today = todayKey();
+    const load = (occupations.data?.day_loads ?? []).find((d) => d.day === today);
+    return load?.headcount ?? 0;
+  }, [occupations.data?.day_loads]);
+
+  const fermeture = useMemo(
+    () =>
+      fermetureState({
+        closings: closings.data,
+        todayHeadcount,
+        iAmPresent: isUserPresentToday(occupations.data?.occupations, me.data?.sub),
+      }),
+    [closings.data, todayHeadcount, occupations.data?.occupations, me.data?.sub],
+  );
 
   if (isLoading) {
     return (
@@ -70,7 +90,10 @@ export default function MaisonHubScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: theme.colors.background }}
+      contentContainerStyle={styles.container}
+    >
       <View style={styles.hero}>
         <View style={{ flex: 1 }}>
           <Text
@@ -122,29 +145,49 @@ export default function MaisonHubScreen() {
         <LighthouseMark width={72} height={94} glowOpacity={0.55} />
       </View>
       <MenuRow
-        title="Infos"
-        subtitle="Adresse et capacité"
-        icon="home-city-outline"
+        title="Réglages"
+        icon="cog-outline"
         onPress={() => router.push('/(tabs)/maison/infos' as Href)}
       />
       <MenuRow
         title="Fermeture"
-        subtitle="Checklist avant de partir"
+        subtitle={
+          closings.isLoading || occupations.isLoading ? 'Chargement…' : fermeture.label
+        }
         icon="clipboard-check-outline"
-        onPress={() => router.push('/(tabs)/maison/fermeture' as Href)}
+        onPress={() => {
+          if (fermeture.kind === 'en_cours' && fermeture.openClosingId) {
+            router.push(`/(tabs)/maison/fermeture/${fermeture.openClosingId}` as Href);
+            return;
+          }
+          router.push('/(tabs)/maison/fermeture' as Href);
+        }}
+      />
+      <MenuRow
+        title="Inventaire"
+        subtitle="Présents et courses prioritaires"
+        icon="clipboard-list-outline"
+        onPress={() => router.push('/(tabs)/maison/inventaire' as Href)}
+      />
+      <MenuRow
+        title="Chantier"
+        subtitle="Travaux et projets"
+        icon="hammer-wrench"
+        onPress={() => router.push('/(tabs)/maison/chantier' as Href)}
       />
       {error ? (
         <Text style={{ color: theme.colors.error, marginTop: 16 }}>{error.message}</Text>
       ) : null}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 8,
+    paddingBottom: 32,
   },
   hero: {
     flexDirection: 'row',

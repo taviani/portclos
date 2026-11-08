@@ -82,6 +82,18 @@ npm install
 npm start
 ```
 
+### Test against production API / OIDC
+
+Use the same values as GitHub Secrets `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_AUTH_ISSUER` (and optional `EXPO_PUBLIC_AUTH_CLIENT_ID`) in `apps/mobile/.env`, **or** export them / set Cursor Secrets then:
+
+```bash
+cd apps/mobile
+npm run env:prod   # writes .env from process env (never prints values)
+npm start          # Expo Go / simulator — real login, no Mode local
+```
+
+`Mode local (AUTH_DISABLED)` only appears when `EXPO_PUBLIC_API_URL` is loopback.
+
 Auth: Expo AuthSession + PKCE against the shared issuer. Current house id is stored on-device (SecureStore).
 
 Client data: **TanStack Query** (`QueryClientProvider` + `queryKeys`) for server state; session token via `SessionProvider`. Creating / selecting a house invalidates `houses` / `currentHouseId` so the Accueil tab updates without remounting. Future calendar keys: `occupations(houseId, month)`.
@@ -102,6 +114,7 @@ Photo uploads land in the `portclos_uploads` Docker volume (`UPLOAD_DIR=/data/up
 | `DEPLOY_USER` | SSH username |
 | `DEPLOY_HOST` | Server hostname |
 | `DEPLOY_PATH` | Absolute deploy directory on the server |
+| `CORS_ORIGINS` | (Optional) Comma-separated browser Origins for Expo web; synced into the server `.env` at deploy. Leave unset for native-only. |
 
 Never put hostnames, paths, or passwords in the repository.
 
@@ -112,6 +125,7 @@ Never put hostnames, paths, or passwords in the repository.
    - `AUTH_ISSUER` — your OIDC issuer URL
    - `AUTH_DISABLED=false` (or omit)
    - Strong `POSTGRES_*` credentials
+   - Optional browser CORS: prefer GitHub secret `CORS_ORIGINS` (deploy syncs it); do not hardcode real Origins in git
 3. Do **not** commit or rsync that `.env` (CI excludes it).
 4. Ensure `docker-compose` is available to the deploy user.
 5. TLS / reverse proxy for the API stays in your host nginx config (not in this repo).

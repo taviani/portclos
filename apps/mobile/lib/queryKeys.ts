@@ -14,5 +14,7 @@ export const queryKeys = {
   blogPost: (postId: string) => ['blogPost', postId] as const,
   helpArticles: (houseId: string) => ['helpArticles', houseId] as const,
   helpArticle: (articleId: string) => ['helpArticle', articleId] as const,
+  inventory: (houseId: string) => ['inventory', houseId] as const,
+  chantiers: (houseId: string) => ['chantiers', houseId] as const,
   search: (houseId: string, q: string) => ['search', houseId, q] as const,
 };
