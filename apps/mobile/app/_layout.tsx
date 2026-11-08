@@ -107,8 +107,24 @@ function SplashGate({
   fontsLoaded: boolean;
   children: ReactNode;
 }) {
-  const { ready: sessionReady, token } = useSession();
+  const { ready: sessionReady, token, signOut } = useSession();
   const me = useMe();
+  if (sessionReady && token && me.isError) {
+    return (
+      <View style={errorStyles.root}>
+        <Text style={errorStyles.title}>Connexion au serveur impossible</Text>
+        <Text style={errorStyles.body}>
+          Impossible de charger ton profil. Vérifie la connexion au serveur puis réessaie.
+        </Text>
+        <Pressable onPress={() => void me.refetch()} style={errorStyles.cta} accessibilityRole="button">
+          <Text style={errorStyles.ctaLabel}>Réessayer</Text>
+        </Pressable>
+        <Pressable onPress={() => void signOut()} style={{ marginTop: 24 }} accessibilityRole="button">
+          <Text style={{ color: Lighthouse.seaInk }}>Se déconnecter</Text>
+        </Pressable>
+      </View>
+    );
+  }
   // Hold splash until profile is known so cold start never paints Maison
   // then immediately bounces to display-name.
   const profileReady = !token || me.isSuccess || me.isError;

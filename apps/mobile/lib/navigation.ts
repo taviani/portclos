@@ -21,8 +21,10 @@ export function resetToAppEntry(target: boolean | AppEntryTarget): void {
   const entry: AppEntryTarget =
     typeof target === 'boolean' ? { loggedIn: target } : target;
   try {
-    while (router.canDismiss()) {
-      router.dismiss();
+    if (router.canDismiss()) {
+      // Navigation updates are asynchronous: repeatedly checking canDismiss
+      // here can enqueue dismissals forever and freeze browser startup.
+      router.dismissAll();
     }
   } catch {
     /* canDismiss may throw before the navigator is ready */

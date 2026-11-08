@@ -118,7 +118,7 @@ export function AnimatedSplash({ ready, children }: Props) {
 
   return (
     <View style={styles.root}>
-      {ready ? children : null}
+      {children}
       <AnimatedView pointerEvents="none" style={[StyleSheet.absoluteFill, shellStyle]}>
         <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
           <Defs>
