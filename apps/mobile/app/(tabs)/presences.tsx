@@ -441,12 +441,11 @@ export default function PresencesScreen() {
 
       {roomsAvailable > 0 ? (
         <Text style={styles.capacityLine}>{bedsLabel(singleBeds, doubleBeds)}</Text>
-      ) : house.role === 'owner' ? (
+      ) : (
         <Text style={styles.capacityLine}>Chambres non configurées</Text>
-      ) : null}
+      )}
 
-      {house.role === 'owner' ? (
-        showCapacityEdit ? (
+      {showCapacityEdit ? (
           <RNView style={styles.capacityEditCol}>
             <RNView style={styles.capacityEdit}>
               <TextInput
@@ -525,8 +524,7 @@ export default function PresencesScreen() {
               {roomsAvailable > 0 ? 'Modifier les chambres' : 'Définir les chambres'}
             </Text>
           </Pressable>
-        )
-      ) : null}
+        )}
 
       <Text style={styles.hintCentered}>
         {!rangeStart

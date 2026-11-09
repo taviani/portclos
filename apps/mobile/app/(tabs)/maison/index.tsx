@@ -60,7 +60,7 @@ export default function MaisonHubScreen() {
           variant="bodyLarge"
           style={{ color: theme.colors.onSurfaceVariant, marginTop: 8, lineHeight: 24 }}
         >
-          Demande une invitation à un propriétaire, ou crée une maison dans Compte.
+          Demande une invitation à un membre, ou crée une maison dans Compte.
         </Text>
         <Button
           mode="contained"
@@ -127,7 +127,7 @@ export default function MaisonHubScreen() {
                 style={styles.copyBtn}
               />
             </View>
-          ) : house.role === 'owner' ? (
+          ) : (
             <Text
               variant="bodyMedium"
               style={{
@@ -139,7 +139,7 @@ export default function MaisonHubScreen() {
             >
               Ajouter l’adresse
             </Text>
-          ) : null}
+          )}
           <BeaconBar style={{ marginTop: 12 }} />
         </View>
         <LighthouseMark width={72} height={94} glowOpacity={0.55} />

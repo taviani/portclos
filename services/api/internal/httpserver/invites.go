@@ -42,7 +42,7 @@ func mountInviteRoutes(pr chi.Router, db *store.Store, mailer mail.Mailer, invit
 		}
 		acceptURL := buildHouseInviteURL(inviteLinkBase, raw)
 		if err := mailer.SendHouseInvite(r.Context(), inv.Email, houseName, acceptURL); err != nil {
-			// Free the pending slot so the owner can retry after fixing SMTP.
+			// Free the pending slot so the member can retry after fixing SMTP.
 			_ = db.RevokeHouseInvite(r.Context(), houseID, inv.ID, user.Subject)
 			writeAPIError(w, r, http.StatusInternalServerError, "mail_failed", err)
 			return
@@ -108,24 +108,6 @@ func mountInviteRoutes(pr chi.Router, db *store.Store, mailer mail.Mailer, invit
 		writeJSON(w, http.StatusOK, h)
 	})
 
-	pr.Delete("/houses/{id}/members/{userSub}", func(w http.ResponseWriter, r *http.Request) {
-		user, ok := auth.UserFromContext(r.Context())
-		if !ok {
-			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", nil)
-			return
-		}
-		target := chi.URLParam(r, "userSub")
-		// Chi may decode once; keep raw path segment if needed.
-		if decoded, err := url.PathUnescape(target); err == nil {
-			target = decoded
-		}
-		err := db.RemoveHouseMember(r.Context(), chi.URLParam(r, "id"), user.Subject, target)
-		if err != nil {
-			writeInviteErr(w, r, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	})
 }
 
 func buildHouseInviteURL(base, rawToken string) string {
@@ -157,8 +139,6 @@ func writeInviteErr(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, `{"error":"invite_invalid"}`, http.StatusBadRequest)
 	case errors.Is(err, store.ErrEmailMismatch):
 		http.Error(w, `{"error":"email_mismatch"}`, http.StatusForbidden)
-	case errors.Is(err, store.ErrCannotRemoveLastOwner):
-		http.Error(w, `{"error":"cannot_remove_last_owner"}`, http.StatusBadRequest)
 	case errors.Is(err, pgx.ErrNoRows):
 		writeAPIError(w, r, http.StatusNotFound, "not_found", nil)
 	default:

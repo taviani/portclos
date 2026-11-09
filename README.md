@@ -49,7 +49,7 @@ go run ./cmd/server
 - `POST|DELETE /me/avatar` · `GET /avatars/{userSub}` — avatar image
 - `GET|POST /houses` — multi-house membership (JWT `sub`)
 - `GET /houses/{id}` — member-only
-- `PATCH /houses/{id}` — owner: `{ "single_beds"?, "double_beds"?, "address"? }` (`bed_capacity` legacy → lits simples)
+- `PATCH /houses/{id}` — member: `{ "single_beds"?, "double_beds"?, "address"? }` (`bed_capacity` legacy → lits simples)
 - `GET /houses/{id}/search?q=` — recherche maison (Postgres FTS français + trigram)
 - `GET /houses/{id}/occupations` — `{ occupations, single_beds, double_beds, bed_capacity, day_loads }` (`from`/`to`)
 - `POST /houses/{id}/occupations` — `{ start_date, end_date, note?, guests? }` → `{ occupation, capacity_warning? }`
@@ -57,9 +57,8 @@ go run ./cmd/server
 - `PATCH /occupations/{id}` — update own occupation (`start_date`, `end_date`, `note` ; `guests` optional replace)
 - `DELETE /occupations/{id}` — delete own occupation
 - `GET /houses/{id}/members` — house roster (display names)
-- `DELETE /houses/{id}/members/{userSub}` — owner: remove a member (not the last owner)
-- `POST|GET /houses/{id}/invites` — owner: create (sends mail) / list pending house invites
-- `POST /houses/{id}/invites/{inviteId}/revoke` — owner: revoke pending invite
+- `POST|GET /houses/{id}/invites` — member: create (sends mail) / list pending house invites
+- `POST /houses/{id}/invites/{inviteId}/revoke` — member: revoke pending invite
 - `POST /house-invites/accept` — `{ "token" }` → join house (email must match JWT)
 - `GET /house-invite?token=` — public HTML “Ouvrir Portclos” (Android `intent://`, iOS deep link)
 - `GET|POST /houses/{id}/posts` · `GET|DELETE /posts/{id}` — house blog (`tags`, `mentions` on create)

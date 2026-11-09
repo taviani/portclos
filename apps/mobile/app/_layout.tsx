@@ -14,7 +14,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { AnimatedSplash } from '@/components/AnimatedSplash';
-import { useColorScheme } from '@/components/useColorScheme';
 import { useMe } from '@/hooks/useHouses';
 import { hasDisplayName } from '@/lib/displayName';
 import { appEntryHref } from '@/lib/navigation';
@@ -22,6 +21,7 @@ import { reportClientEvent } from '@/lib/telemetry';
 import { AppProviders } from '@/providers/AppProviders';
 import { useSession } from '@/providers/SessionProvider';
 import { Lighthouse } from '@/theme/lighthouse';
+import { useAppTheme } from '@/theme/paper';
 
 export const unstable_settings = {
   // Always enter via index so cold start / state restore cannot skip to a
@@ -107,8 +107,24 @@ function SplashGate({
   fontsLoaded: boolean;
   children: ReactNode;
 }) {
-  const { ready: sessionReady, token } = useSession();
+  const { ready: sessionReady, token, signOut } = useSession();
   const me = useMe();
+  if (sessionReady && token && me.isError) {
+    return (
+      <View style={errorStyles.root}>
+        <Text style={errorStyles.title}>Connexion au serveur impossible</Text>
+        <Text style={errorStyles.body}>
+          Impossible de charger ton profil. Vérifie la connexion au serveur puis réessaie.
+        </Text>
+        <Pressable onPress={() => void me.refetch()} style={errorStyles.cta} accessibilityRole="button">
+          <Text style={errorStyles.ctaLabel}>Réessayer</Text>
+        </Pressable>
+        <Pressable onPress={() => void signOut()} style={{ marginTop: 24 }} accessibilityRole="button">
+          <Text style={{ color: Lighthouse.seaInk }}>Se déconnecter</Text>
+        </Pressable>
+      </View>
+    );
+  }
   // Hold splash until profile is known so cold start never paints Maison
   // then immediately bounces to display-name.
   const profileReady = !token || me.isSuccess || me.isError;
@@ -120,10 +136,23 @@ function SplashGate({
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  const theme = useAppTheme();
+  const base = theme.dark ? DarkTheme : DefaultTheme;
+  const navigationTheme = {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: theme.colors.primary,
+      background: theme.colors.background,
+      card: theme.colors.surface,
+      text: theme.colors.onSurface,
+      border: theme.colors.outlineVariant,
+      notification: theme.colors.error,
+    },
+  };
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={navigationTheme}>
       <AuthGate>
         <DisplayNameGate>
           <RootStack />
@@ -178,7 +207,7 @@ function AuthGate({ children }: { children: ReactNode }) {
   const root = segments[0];
   const onAuth = root === 'login' || root === 'auth';
   // Root `/` is handled by app/index.tsx; do not fight that redirect here.
-  const onIndex = root === undefined || root === 'index';
+  const onIndex = root === undefined;
 
   let loginRedirect: ReactNode = null;
   if (token && onAuth) {
@@ -211,7 +240,7 @@ function DisplayNameGate({ children }: { children: ReactNode }) {
   }
 
   const root = segments[0];
-  const onIndex = root === undefined || root === 'index';
+  const onIndex = root === undefined;
   const onDisplayName = root === 'display-name';
   // Let login / cold-start index finish their own redirects first.
   if (root === 'login' || root === 'auth' || onIndex) {

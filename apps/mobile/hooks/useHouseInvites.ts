@@ -4,7 +4,6 @@ import {
   acceptHouseInvite,
   createHouseInvite,
   fetchHouseInvites,
-  removeHouseMember,
   revokeHouseInvite,
 } from '@/lib/api';
 import { setCurrentHouseId } from '@/lib/auth';
@@ -66,22 +65,6 @@ export function useAcceptHouseInvite() {
       await qc.invalidateQueries({ queryKey: queryKeys.houses });
       await qc.invalidateQueries({ queryKey: queryKeys.currentHouseId });
       await qc.invalidateQueries({ queryKey: queryKeys.houseMembers(house.id) });
-    },
-  });
-}
-
-export function useRemoveHouseMember(houseId: string | undefined) {
-  const { token } = useSession();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (userSub: string) => {
-      if (!token || !houseId) throw new Error('unauthorized');
-      await removeHouseMember(token, houseId, userSub);
-    },
-    onSuccess: async () => {
-      if (!houseId) return;
-      await qc.invalidateQueries({ queryKey: queryKeys.houseMembers(houseId) });
-      await qc.invalidateQueries({ queryKey: queryKeys.houses });
     },
   });
 }

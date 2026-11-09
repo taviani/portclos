@@ -69,10 +69,12 @@ CREATE TABLE IF NOT EXISTS houses (
 CREATE TABLE IF NOT EXISTS house_members (
   house_id UUID NOT NULL REFERENCES houses (id) ON DELETE CASCADE,
   user_sub TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('owner', 'member')),
+  role TEXT NOT NULL CHECK (role IN ('member')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (house_id, user_sub)
 );
+-- Normalize memberships created before the single-member-role model.
+UPDATE house_members SET role = 'member' WHERE role = 'owner';
 CREATE INDEX IF NOT EXISTS house_members_user_sub_idx ON house_members (user_sub);
 CREATE TABLE IF NOT EXISTS occupations (
   id UUID PRIMARY KEY,
@@ -168,13 +170,13 @@ RETURNING id::text, name, address, single_beds, double_beds, bed_capacity, creat
 	}
 	if _, err := tx.Exec(ctx, `
 INSERT INTO house_members (house_id, user_sub, role)
-VALUES ($1, $2, 'owner')`, id, userSub); err != nil {
+VALUES ($1, $2, 'member')`, id, userSub); err != nil {
 		return House{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return House{}, err
 	}
-	h.Role = "owner"
+	h.Role = "member"
 	return h, nil
 }
 
@@ -190,11 +192,12 @@ WHERE h.id = $1 AND m.user_sub = $2`, houseID, userSub,
 }
 
 type HouseMember struct {
-	UserSub     string `json:"user_sub"`
-	DisplayName string `json:"display_name"`
-	Email       string `json:"email"`
-	Role        string `json:"role"`
-	HasAvatar   bool   `json:"has_avatar"`
+	UserSub     string    `json:"user_sub"`
+	DisplayName string    `json:"display_name"`
+	Email       string    `json:"email"`
+	Role        string    `json:"role"`
+	HasAvatar   bool      `json:"has_avatar"`
+	JoinedAt    time.Time `json:"joined_at"`
 }
 
 func (s *Store) ListHouseMembers(ctx context.Context, houseID string) ([]HouseMember, error) {
@@ -202,7 +205,8 @@ func (s *Store) ListHouseMembers(ctx context.Context, houseID string) ([]HouseMe
 SELECT m.user_sub, m.role,
   COALESCE(p.display_name, ''),
   COALESCE(p.email, ''),
-  COALESCE(p.avatar_key, '') <> ''
+  COALESCE(p.avatar_key, '') <> '',
+  m.created_at
 FROM house_members m
 LEFT JOIN user_profiles p ON p.user_sub = m.user_sub
 WHERE m.house_id = $1
@@ -215,7 +219,7 @@ ORDER BY m.role ASC, COALESCE(NULLIF(p.display_name, ''), NULLIF(p.email, ''), m
 	var out []HouseMember
 	for rows.Next() {
 		var m HouseMember
-		if err := rows.Scan(&m.UserSub, &m.Role, &m.DisplayName, &m.Email, &m.HasAvatar); err != nil {
+		if err := rows.Scan(&m.UserSub, &m.Role, &m.DisplayName, &m.Email, &m.HasAvatar, &m.JoinedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
