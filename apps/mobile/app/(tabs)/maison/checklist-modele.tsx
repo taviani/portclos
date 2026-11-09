@@ -13,6 +13,7 @@ import {
 } from 'react-native-paper';
 
 import { AuthedImage } from '@/components/AuthedImage';
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import {
   useChecklistItems,
   useCreateChecklistItem,
@@ -163,10 +164,9 @@ export default function FermetureModeleScreen() {
   }
 
   return (
-    <ScrollView
+    <KeyboardScreen
       style={{ backgroundColor: theme.colors.background }}
       contentContainerStyle={styles.pad}
-      keyboardShouldPersistTaps="handled"
     >
       <Text
         variant="headlineMedium"
@@ -400,7 +400,7 @@ export default function FermetureModeleScreen() {
       {error ? (
         <Text style={{ color: theme.colors.error, marginTop: 12 }}>{error}</Text>
       ) : null}
-    </ScrollView>
+    </KeyboardScreen>
   );
 }
 
