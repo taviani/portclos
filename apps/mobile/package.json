@@ -37,6 +37,7 @@
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "@types/react": "~19.2.2",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -48,7 +49,8 @@
     "web": "expo start --web",
     "eas:build": "eas build --profile preview --platform all",
     "eas:submit": "eas submit --profile preview --platform all",
-    "splash:export": "node scripts/export-splash.mjs"
+    "splash:export": "node scripts/export-splash.mjs",
+    "postinstall": "patch-package"
   },
   "private": true
 }
