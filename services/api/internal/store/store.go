@@ -192,11 +192,12 @@ WHERE h.id = $1 AND m.user_sub = $2`, houseID, userSub,
 }
 
 type HouseMember struct {
-	UserSub     string `json:"user_sub"`
-	DisplayName string `json:"display_name"`
-	Email       string `json:"email"`
-	Role        string `json:"role"`
-	HasAvatar   bool   `json:"has_avatar"`
+	UserSub     string    `json:"user_sub"`
+	DisplayName string    `json:"display_name"`
+	Email       string    `json:"email"`
+	Role        string    `json:"role"`
+	HasAvatar   bool      `json:"has_avatar"`
+	JoinedAt    time.Time `json:"joined_at"`
 }
 
 func (s *Store) ListHouseMembers(ctx context.Context, houseID string) ([]HouseMember, error) {
@@ -204,7 +205,8 @@ func (s *Store) ListHouseMembers(ctx context.Context, houseID string) ([]HouseMe
 SELECT m.user_sub, m.role,
   COALESCE(p.display_name, ''),
   COALESCE(p.email, ''),
-  COALESCE(p.avatar_key, '') <> ''
+  COALESCE(p.avatar_key, '') <> '',
+  m.created_at
 FROM house_members m
 LEFT JOIN user_profiles p ON p.user_sub = m.user_sub
 WHERE m.house_id = $1
@@ -217,7 +219,7 @@ ORDER BY m.role ASC, COALESCE(NULLIF(p.display_name, ''), NULLIF(p.email, ''), m
 	var out []HouseMember
 	for rows.Next() {
 		var m HouseMember
-		if err := rows.Scan(&m.UserSub, &m.Role, &m.DisplayName, &m.Email, &m.HasAvatar); err != nil {
+		if err := rows.Scan(&m.UserSub, &m.Role, &m.DisplayName, &m.Email, &m.HasAvatar, &m.JoinedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

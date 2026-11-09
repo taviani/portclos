@@ -17,6 +17,7 @@ export type HouseMember = {
   email: string;
   role: string;
   has_avatar: boolean;
+  joined_at?: string;
 };
 
 export async function fetchHouses(accessToken: string): Promise<House[]> {

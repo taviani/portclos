@@ -125,8 +125,14 @@ export default function InviterScreen() {
         variant="bodyMedium"
         style={{ color: theme.colors.onSurfaceVariant, lineHeight: 22, marginBottom: 12 }}
       >
-        Invite quelqu’un à rejoindre « {house.name} ». La personne doit se connecter avec
-        le même e-mail, puis ouvrir le lien reçu.
+        Invite une personne à rejoindre l’indivision de « {house.name} ».
+      </Text>
+      <Text
+        variant="bodyMedium"
+        style={{ color: theme.colors.onSurfaceVariant, lineHeight: 22, marginBottom: 12 }}
+      >
+        La personne recevra un lien par e-mail. Pour rejoindre la maison, elle devra
+        ouvrir ce lien et se connecter avec l’adresse e-mail invitée.
       </Text>
 
       <TextInput
@@ -195,11 +201,17 @@ export default function InviterScreen() {
       ) : (
         (members.data ?? []).map((m) => {
           const label = m.display_name?.trim() || m.email || m.user_sub;
+          const joinedAt = m.joined_at ? new Date(m.joined_at) : null;
+          const joinedLabel = joinedAt && !Number.isNaN(joinedAt.getTime())
+            ? `Membre depuis le ${joinedAt.toLocaleDateString('fr-FR', {
+                day: 'numeric', month: 'long', year: 'numeric',
+              })}`
+            : undefined;
           return (
             <List.Item
               key={m.user_sub}
               title={label}
-              description="Membre"
+              description={joinedLabel}
               style={styles.listRow}
             />
           );
