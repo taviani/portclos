@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -428,16 +430,22 @@ export default function ClosingRunScreen() {
         transparent
         onRequestClose={() => setFinishNotesOpen(false)}
       >
-        <View style={[styles.modalRoot, { backgroundColor: theme.colors.backdrop }]}>
+        <KeyboardAvoidingView
+          style={[styles.modalRoot, { backgroundColor: theme.colors.backdrop }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setFinishNotesOpen(false)} />
-          <View
+          <ScrollView
             style={[
               styles.sheet,
               {
                 backgroundColor: theme.colors.elevation.level2,
-                paddingBottom: Math.max(insets.bottom, 16),
+                flexGrow: 0,
               },
             ]}
+            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
           >
             <View style={styles.sheetHeader}>
               <Text
@@ -487,8 +495,8 @@ export default function ClosingRunScreen() {
                 Terminer
               </Button>
             </View>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Task context modal */}
